@@ -23,6 +23,7 @@ function endplate(img, saveDir){
 	
 	// Establishing the correct criteria
 	selectWindow("Z");
+	//run("Set Scale...", "distance=0 known=0 unit=pixel"); // Option to force image to pixels
 	part_size = 20;
 	area_limit = 330;
 	minor_limit = 15;
@@ -278,25 +279,25 @@ function endplate(img, saveDir){
 			
 			selectWindow("Bung Mask-"+i);
 			save_img = getTitle();
-			org_img = img.substring(0,img.length-4)
+			org_img = img.substring(0,img.length-4);
 			spath = saveDir+org_img+"-"+save_img+".tif";
 			saveAs("Tiff", spath);
-			close(save_img+".tif");
+			close(org_img+"-"+save_img+".tif");
 			selectWindow("VAChT Mask-"+i);
 			save_img = getTitle();
 			spath = saveDir+org_img+"-"+save_img+".tif";
 			saveAs("Tiff", spath);
-			close(save_img+".tif");
+			close(org_img+"-"+save_img+".tif");
 			selectWindow("Bung Endplate-"+i);
 			save_img = getTitle();
 			spath = saveDir+org_img+"-"+save_img+".tif";
 			saveAs("Tiff", spath);
-			close(save_img+".tif");
+			close(org_img+"-"+save_img+".tif");
 			selectWindow("VAChT Endplate-"+i);
 			save_img = getTitle();
 			spath = saveDir+org_img+"-"+save_img+".tif";
 			saveAs("Tiff", spath);
-			close(save_img+".tif");
+			close(org_img+"-"+save_img+".tif");
 
 		} else {
 			close("Bung Endplate-"+i);
@@ -304,14 +305,12 @@ function endplate(img, saveDir){
 		}
 	}
 	
-	close("VAChT background");
-	close("Bung background");
-	close("VAChT");
-	close("Bung");	
 	// Saving the results array
 	Array.show("Results",results_array,bx,by,bw,bh);
 	spath = saveDir+org_img+"-Results.csv";
 	saveAs("Results", spath);
+	run("Close");
+	close("*");
 }
 
 
@@ -322,7 +321,6 @@ ff = getBoolean("Would you like to process a single file or a whole folder of fi
 // General setup
 saveSettings();
 setOption("BlackBackground", true);
-run("Set Scale...", "distance=0 known=0 unit=pixel");
 run("Set Measurements...", "area mean standard perimeter bounding fit median area_fraction redirect=None decimal=3");
 //setBatchMode(true);
 
@@ -337,7 +335,7 @@ if (ff == 1) {
 	imagelist = getFileList(imageDir);
 }
 
-roiDir=imageDir+"Analysis_Results\\";
+roiDir=imageDir+"\\Analysis_Results\\";
 File.makeDirectory(roiDir);
 
 if (ff == 1) {
@@ -360,4 +358,3 @@ if (ff == 1) {
 endTime = (getTime()-start)/1000/60;
 print("Analysis is finished! Took "+endTime+" minutes to run.");
 
-		
