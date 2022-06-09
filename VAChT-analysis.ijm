@@ -25,12 +25,12 @@ function endplate(img, saveDir){
 	selectWindow("Z");
 	//run("Set Scale...", "distance=0 known=0 unit=pixel"); // Option to force image to pixels
 	part_size = 20;
-	area_limit = 330;
+	area_limit = 350;
 	minor_limit = 15;
 	getPixelSize(unit, pw, ph); // Grabbing the units and pixel size of the image
 	if (unit != "pixel") {
 		part_size = 20*pw*ph;
-		area_limit = 330*pw*ph;
+		area_limit = 350*pw*ph;
 		minor_limit = 15*pw;
 	}
 	
@@ -78,7 +78,7 @@ function endplate(img, saveDir){
 	for (i=0; i<bx.length; i++) {
 		for (j=0; j<bx.length; j++) {
 			if (bw[i]>bx[j] && bx[j]>bx[i] && bh[i]>by[j] && by[j]>by[i]) {
-				if (area[i] < area_limit || area[j] < area_limit) {
+				if ((area[i] < area_limit && area[j] >= area_limit) || (area[i] >= area_limit && area[j] < area_limit)) {
 					bx = mergebox(bx,i,j,"min");
 					bw = mergebox(bw,i,j,"max");
 					by = mergebox(by,i,j,"min");
@@ -92,7 +92,7 @@ function endplate(img, saveDir){
 					}
 				}
 			} else if (bw[i]>bx[j] && bx[j]>bx[i] && bh[i]>bh[j] && bh[j]>by[i]) {
-				if (area[i] < area_limit || area[j] < area_limit) {
+				if ((area[i] < area_limit && area[j] >= area_limit) || (area[i] >= area_limit && area[j] < area_limit)) {
 					bx = mergebox(bx,i,j,"min");
 					bw = mergebox(bw,i,j,"max");
 					by = mergebox(by,i,j,"min");
@@ -106,7 +106,7 @@ function endplate(img, saveDir){
 					}
 				}
 			} else if (bw[i]>bw[j] && bw[j]>bx[i] && bh[i]>by[j] && by[j]>by[i]) {
-				if (area[i] < area_limit || area[j] < area_limit) {
+				if ((area[i] < area_limit && area[j] >= area_limit) || (area[i] >= area_limit && area[j] < area_limit)) {
 					bx = mergebox(bx,i,j,"min");
 					bw = mergebox(bw,i,j,"max");
 					by = mergebox(by,i,j,"min");
@@ -120,7 +120,7 @@ function endplate(img, saveDir){
 					}
 				}
 			} else if (bw[i]>bw[j] && bw[j]>bx[i] && bh[i]>bh[j] && bh[j]>by[i]) {
-				if (area[i] < area_limit || area[j] < area_limit) {
+				if ((area[i] < area_limit && area[j] >= area_limit) || (area[i] >= area_limit && area[j] < area_limit)) {
 					bx = mergebox(bx,i,j,"min");
 					bw = mergebox(bw,i,j,"max");
 					by = mergebox(by,i,j,"min");
@@ -174,6 +174,8 @@ function endplate(img, saveDir){
 	selectWindow("Bung");
 	run("Duplicate...", "title=Outline");
 	setThreshold(1, 255);
+	run("Analyze Particles...", "size=0-Infinity clear add"); // Creating individual selections for analyzing
+	roiManager("Show None");
 	run("Convert to Mask");
 	run("Create Selection");
 	close("Outline");
@@ -196,11 +198,20 @@ function endplate(img, saveDir){
 	selectWindow("VAChT background");
 	run("Restore Selection");
 	run("Add...", "value="+add_val);
-	run("Select None");
+	run("Select None");	
+	
+	// Setting some variables for background analysis
+	org_img = img.substring(0,img.length-4);
+	d = newArray(bx.length);
+	results_array = Array.copy(bx);
+	endplate_array = Array.copy(bx);
+	Array.fill(results_array, 0);
+	endplate_num = 1;
+	
+//	print("Area Limit: "+area_limit);
+//	print("Minor Limit: "+minor_limit);
 	
 	// Cutting out the Endplates + 3x the box for background analysis
-	results_array = Array.copy(bx);
-	Array.fill(results_array, 0);
 	for (i=0; i<bx.length; i++) {
 		topx = bx[i]-1.5*bw[i];
 		topy = by[i]-1.5*bh[i];
@@ -209,10 +220,13 @@ function endplate(img, saveDir){
 		
 		// Grabbing the desired Endplate from the Bungarotoxin windows
 		selectWindow("Bung");
+		run("Duplicate...", "title=[Bung-"+i+"]");
+		roiManager("Select", i);
+		run("Clear Outside");
+		run("Select None");
 		makeRectangle(bx[i], by[i], bw[i], bh[i]); //Need everything to be in pixels
 		run("Duplicate...", "title=[Bung Endplate-"+i+"]");
-		selectWindow("Bung");
-		run("Select None");
+		close("Bung-"+i);
 		
 		selectWindow("Bung background");
 		makeRectangle(topx, topy, width, height);
@@ -235,10 +249,12 @@ function endplate(img, saveDir){
 		//run("Invert LUT");
 		run("Create Selection");
 		minor = getValue("Minor");
+		end_area = getValue("Area");
 		run("Select None");
 		
+		endplate_array[i] = 100*end_area/(bw[i]*bh[i]);
 
-		if (minor>minor_limit) {
+		if (minor>minor_limit && end_area>area_limit) {
 			selectWindow("VAChT");
 			makeRectangle(bx[i], by[i], bw[i], bh[i]);
 			run("Duplicate...", "title=[VAChT Endplate-"+i+"]");
@@ -278,35 +294,52 @@ function endplate(img, saveDir){
 			results_array[i] = overlap;
 			
 			selectWindow("Bung Mask-"+i);
-			save_img = getTitle();
-			org_img = img.substring(0,img.length-4);
-			spath = saveDir+org_img+"-"+save_img+".tif";
+			spath = saveDir+org_img+"-Bung Mask-"+endplate_num+".tif";
 			saveAs("Tiff", spath);
-			close(org_img+"-"+save_img+".tif");
+			close(org_img+"-Bung Mask-"+endplate_num+".tif");
 			selectWindow("VAChT Mask-"+i);
-			save_img = getTitle();
-			spath = saveDir+org_img+"-"+save_img+".tif";
+			spath = saveDir+org_img+"-VAChT Mask-"+endplate_num+".tif";
 			saveAs("Tiff", spath);
-			close(org_img+"-"+save_img+".tif");
+			close(org_img+"-VAChT Mask-"+endplate_num+".tif");
 			selectWindow("Bung Endplate-"+i);
-			save_img = getTitle();
-			spath = saveDir+org_img+"-"+save_img+".tif";
+			spath = saveDir+org_img+"-Bung Endplate-"+endplate_num+".tif";
 			saveAs("Tiff", spath);
-			close(org_img+"-"+save_img+".tif");
+			close(org_img+"-Bung Endplate-"+endplate_num+".tif");
 			selectWindow("VAChT Endplate-"+i);
-			save_img = getTitle();
-			spath = saveDir+org_img+"-"+save_img+".tif";
+			spath = saveDir+org_img+"-VAChT Endplate-"+endplate_num+".tif";
 			saveAs("Tiff", spath);
-			close(org_img+"-"+save_img+".tif");
+			close(org_img+"-VAChT Endplate-"+endplate_num+".tif");
+			
+			endplate_num += 1;
 
 		} else {
+			
+			d[i] = 1;
+			
 			close("Bung Endplate-"+i);
 			close("Bung Mask-"+i);
 		}
 	}
 	
 	// Saving the results array
-	Array.show("Results",results_array,bx,by,bw,bh);
+	k = 0;
+	for (i=0; i<d.length; i++) {
+		bx[i] = bx[i]*pw; //converting back to units
+		by[i] = by[i]*ph;
+		bw[i] = bw[i]*pw;
+		bh[i] = bh[i]*ph;
+		if (d[i] == 1) {
+			results_array = Array.deleteIndex(results_array, i-k);
+			endplate_array = Array.deleteIndex(endplate_array, i-k);
+			bx = Array.deleteIndex(bx, i-k);
+			by = Array.deleteIndex(by, i-k);
+			bw = Array.deleteIndex(bw, i-k);
+			bh = Array.deleteIndex(bh, i-k);
+			k += 1;
+		}
+	}
+	
+	Array.show("Results",results_array,endplate_array,bx,by,bw,bh);
 	spath = saveDir+org_img+"-Results.csv";
 	saveAs("Results", spath);
 	run("Close");
@@ -322,13 +355,13 @@ ff = getBoolean("Would you like to process a single file or a whole folder of fi
 saveSettings();
 setOption("BlackBackground", true);
 run("Set Measurements...", "area mean standard perimeter bounding fit median area_fraction redirect=None decimal=3");
-//setBatchMode(true);
+setBatchMode(true);
 
 start = getTime();
 if (ff == 1) {
 	fpath = File.openDialog("Select a File");
 	imageDir = File.getParent(fpath);
-	name = File.getName(fpath);
+	imgName = File.getName(fpath);
 } else {
 	// Getting the folder where images are located
 	imageDir=getDirectory("Select Endplate Counting Folder for Image Processing");
@@ -340,7 +373,7 @@ File.makeDirectory(roiDir);
 
 if (ff == 1) {
 	run("Bio-Formats Importer", "open=["+fpath+"] color_mode=Grayscale rois_import=[ROI manager] view=Hyperstack stack_order=XYCZT");
-	endplate(name, roiDir);
+	endplate(imgName, roiDir);
 } else {
 	// Grabbing each image individually for analysis
 	for (image=0;image<imagelist.length;image++) {
@@ -351,10 +384,10 @@ if (ff == 1) {
 			imgName=imagelist[image];
 			fpath = imageDir+imgName;
 			run("Bio-Formats Importer", "open=["+fpath+"] color_mode=Grayscale rois_import=[ROI manager] view=Hyperstack stack_order=XYCZT");
-			endplate(name, roiDir);
+			endplate(imgName, roiDir);
 		}
 	}
 }
 endTime = (getTime()-start)/1000/60;
 print("Analysis is finished! Took "+endTime+" minutes to run.");
-
+setBatchMode(false);
