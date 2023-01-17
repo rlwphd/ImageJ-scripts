@@ -1,146 +1,3 @@
-function boutonCheck(boutonImage, thresh, boutonType, headers, pathSave, nameBase, picSave) { 
-// Checking to make sure that there are boutons present for each threshold, if not creating a zero result
-	selectWindow(boutonImage);
-	run("Duplicate...", "title=check duplicate");
-	run("8-bit");
-	valueThreshold = thresh/4095*255;
-	setThreshold(valueThreshold, 255);
-	run("Convert to Mask", "method=Default background=Dark black");
-	run("Analyze Particles...", "size=0-infinity circularity=0.00-1.00 show=Nothing clear stack");
-	numOfparts = nResults;
-	close("check");
-
-	dataList = newArray("Volume (micron^3)", "Nb of obj. voxels", "Nb of surf. voxels", "IntDen", "Mean", "StdDev", "Median", "Min", "Max", "XM", "YM", "ZM", "BX", "BY", "BZ", "B-width", "B-height", "B-depth");
-	// If there are no particles then create a Results Table of 0s
-	if (numOfparts == 0) {
-		Table.create("Mouse-Results");
-		for (i = 0; i < dataList.length; i++) {
-			Table.set(dataList[i], numOfparts, 0);
-		}
-		Table.set("Threshold", numOfparts, thresh);
-		Table.set("Data Type", numOfparts, "Empty");
-		Table.set("Category", numOfparts, headers[0]);
-		Table.set("Mouse", numOfparts, headers[1]);
-		Table.set("Synapse", numOfparts, boutonType[1]);
-		Table.set("Vamp", numOfparts, boutonType[2]);
-		
-	} else {
-		// Otherwise analyze the boutons
-			//print("analyzing the boutons");
-			// Running bouton analysis by finding boutons in FITC channel and measuring values in the FITC and Cy3 channels
-			if (thresh == 1500) {
-				initialize = true;
-			} else {
-				initialize = false;
-			}
-			boutonAnalysis(boutonImage, "ch2", thresh, boutonType[1], boutonType, headers, dataList, picSave, pathSave, nameBase, initialize);
-			boutonAnalysis(boutonImage, "ch3", thresh, boutonType[2], boutonType, headers, dataList, picSave, pathSave, nameBase, false);
-
-			if (initialize) {
-				// Getting the background data for determining cutoff values
-				selectWindow("ch2");
-				run("Flip Horizontally", "stack");
-				run("Flip Vertically", "stack");
-				background = boutonType[1]+" Background";
-				boutonAnalysis(boutonImage, "ch2", thresh, background, boutonType, headers, dataList, false, pathSave, nameBase, false);
-				selectWindow("ch2");
-				run("Flip Horizontally", "stack");
-				run("Flip Vertically", "stack");
-			
-				selectWindow("ch3");
-				run("Flip Horizontally", "stack");
-				run("Flip Vertically", "stack");
-				background = boutonType[2]+" Background";
-				boutonAnalysis(boutonImage, "ch3", thresh, background, boutonType, headers, dataList, false, pathSave, nameBase, false);
-				selectWindow("ch3");
-				run("Flip Horizontally", "stack");
-				run("Flip Vertically", "stack");
-			}
-	}
-}
-
-
-// bouton analysis function
-// redirectTitle is the name of the channel to analyze, thresh is the threshold value for the 3D Objects Counter
-// boutonType is a text for specifying the name of the bouton, imgBool is a T/F for if you want to save the overlayed image
-// pathSave is a passthrough of savePath, nameBase is baseName passthrough
-function boutonAnalysis(boutonImage, redirectTitle, thresh, dataType, boutonType, headers, colNames, imgBool, pathSave, nameBase, initialize) {
-	selectWindow(boutonImage);
-	run("Select None");
-	run("3D OC Options", "volume nb_of_obj._voxels nb_of_surf._voxels integrated_density mean_gray_value std_dev_gray_value median_gray_value minimum_gray_value maximum_gray_value centre_of_mass bounding_box show_masked_image_(redirection_requiered) dots_size=5 font_size=10 store_results_within_a_table_named_after_the_image_(macro_friendly) redirect_to="+redirectTitle);
-	run("3D Objects Counter", "threshold="+thresh+" slice=1 min.=10 max.=100663296 statistics");
-	Table.deleteColumn("Surface (micron^2)");
-	Table.deleteColumn("X");
-	Table.deleteColumn("Y");
-	Table.deleteColumn("Z");
-	Table.deleteColumn("Mean dist. to surf. (micron)");
-	Table.deleteColumn("SD dist. to surf. (micron)");
-	Table.deleteColumn("Median dist. to surf. (micron)");
-	Table.rename("Statistics for boutons redirect to "+redirectTitle, "New");
-
-	// Adding in the parameters from the image file name to the Results Table
-	thresholdArray = newArray(Table.size);
-	Array.fill(thresholdArray, thresh);
-	dataArray = newArray(Table.size);
-	categoryArray = newArray(Table.size);
-	mouseArray = newArray(Table.size);
-	synapseArray = newArray(Table.size);
-	vampArray = newArray(Table.size);
-	for (i=0; i<Table.size; i++) {
-		dataArray[i] = dataType;
-		categoryArray[i] = headers[0];
-		mouseArray[i] = headers[1];
-		synapseArray[i] = boutonType[1];
-		vampArray[i] = boutonType[2];
-	}
-	Table.setColumn("Threshold", thresholdArray);
-	Table.setColumn("Data Type", dataArray);
-	Table.setColumn("Category", categoryArray);
-	Table.setColumn("Mouse", mouseArray);
-	Table.setColumn("Synapse", synapseArray);
-	Table.setColumn("Vamp", vampArray);
-	
-	// Merging all of the threshold and channel results tables into one table for saving
-	if (initialize) {
-		Table.rename("New", "Mouse-Results");
-	} else {
-		Table.create("Data");
-		extras = newArray("Threshold", "Data Type", "Category", "Mouse", "Synapse", "Vamp");
-		rowHeaders = Array.concat(colNames,extras);
-		for (j = 0; j < rowHeaders.length; j++) {
-			transfer = Table.getColumn(rowHeaders[j], "New");
-			current = Table.getColumn(rowHeaders[j], "Mouse-Results");
-			current = Array.concat(current,transfer);
-			Table.setColumn(rowHeaders[j], current, "Data");
-		}
-		close("New");
-		close("Mouse-Results");
-		Table.rename("Data", "Mouse-Results");
-	}
-	
-
-	if (imgBool) {
-		selectWindow("Masked image for boutons redirect to "+redirectTitle);
-		setThreshold(5, 65535);
-		run("Convert to Mask", "method=Default background=Dark black");
-		run("Analyze Particles...", "clear add stack");
-		selectWindow(redirectTitle);
-		run("Duplicate...", "title=pic duplicate");
-		roiManager("Set Color", "blue");
-		roiManager("Show All without labels");
-		run("From ROI Manager");
-		close("ROI Manager");
-		run("Flatten", "stack");
-		saveAs("TIFF", pathSave+"-"+dataType+"-"+thresh+".tif");
-		close("Masked image for boutons redirect to "+redirectTitle);
-		close("pic");
-	}
-}
-
-
-
-// Main script
-
 // Getting the folder where images are located
 imageDir=getDirectory("Select Spinal Cord Folder for Image Processing");
 roiDir=imageDir+"Analysis_Results\\";
@@ -149,208 +6,469 @@ imageArray = newArray;
 File.makeDirectory(roiDir);
 saveSettings();
 setOption("BlackBackground", true);
-run("Set Measurements...", "area mean standard modal min centroid perimeter shape integrated median skewness stack redirect=None decimal=3");
-setBatchMode(true);
+setBackgroundColor(0, 0, 0);
+run("Set Measurements...", "area mean standard fit median stack redirect=None decimal=3");
+//setBatchMode(true);
 
 start = getTime();
 // Grabbing each image individually for analysis
-for (image=0;image<imagelist.length;image++) {
+//for (image=0;image<imagelist.length;image++) {
+for (image=0;image<1;image++) {
+
 
 // Opening each image that is a 60x image and getting the image title
 // This can be modified to whatever file ending is needed (could just be .oib)
-	if (endsWith(imagelist[image], "60x2.oib")) {
+	if (endsWith(imagelist[image], ".oib")) {
 		imgName=imagelist[image];
 		baseNameEnd=indexOf(imgName, ".oib"); 
         baseName=substring(imgName, 0, baseNameEnd);
-        maskName = baseName + "-mask.tif";
+        maskName = baseName + "-mask-";
         savePath = roiDir+baseName;
 		fpath = imageDir+imgName;
-		mpath = imageDir+maskName;
+		mpath = roiDir+maskName;
 		run("Bio-Formats Importer", "open=["+fpath+"] color_mode=Grayscale rois_import=[ROI manager] split_channels view=Hyperstack stack_order=XYCZT");
-		imageGroups = split(baseName, "_");
-		channelTypes = split(imageGroups[2], "-");
-		neunResult = 0;
-		nucleiResult = 0;
 
-		programStart = getTime();
-		// Cycling through the images to rename them
-		for (channel = 0; channel < nImages; channel++) {	
-			selectImage(channel+1);
-			rename("ch"+toString(channel+1));
+		for (i = 0; i < nImages; i++) {	
+			selectImage(i+1);
+			rename("ch"+toString(i+1));
+			slices = nSlices;
+			for (j=1; j<=nSlices; j++) {
+		   		setSlice(j);
+		   		getRawStatistics(nPixels, mean, min, max, std, histogram);
+		   		percent = Array.copy(histogram);
+		    	percent[0] = histogram[0]/nPixels;
+		    	bottom = 0;
+		    	for (k=1; k<histogram.length; k++) {
+		    		histogram[k] = histogram[k-1]+histogram[k];
+		    		percent[k] = histogram[k]*100/nPixels;
+		    		if (percent[k]<=10.1) {
+		    			bottom = k;
+		    		}
+		    		if (percent[k]>94 && percent[k]<=97 && k>300 && i==0) {
+		    			multiply = 4095/(k-bottom);
+		    		} else if (percent[k]>94 && percent[k]<=97 && k<300 && i==0) {
+		    			multiply = 0.5;
+		    		} else if (percent[k]>90 && percent[k]<=93 && i!=0) {
+		    			multiply = 4095/(k-bottom);
+		    		}
+		    	}
+		    	run("Subtract...", "value="+bottom+" slice");
+		    	run("Multiply...", "value="+multiply+" slice");
+			}			
+			run("8-bit");
 		}
-
-		//print(mpath);
-		open(mpath);
-		rename("mmask");
 		
-	// Checking to see if there are any neurons at all
-		selectWindow("mmask");
-		run("Analyze Particles...", "size=50-5000 circularity=0.00-1.00 show=Masks clear stack");
-		rename("neurons");
-		neuronResult = nResults;
-		print(neuronResult);
-
-		if (neuronResult > 0) {
+		selectWindow("ch1");
 		
-		// Creating the outline around the cell body for bouton analysis
-			// Getting the inside of the doughnut (the core of the neurons)
-			selectWindow("ch2");
-			run("Duplicate...", "title=boutons duplicate");
-			selectWindow("neurons");
-			run("Duplicate...", "title=inner2 duplicate");
-			run("Duplicate...", "title=inner duplicate");
-			run("EDM Binary Operations", "iterations=45 operation=open stack");
-			run("EDM Binary Operations", "iterations=8 operation=erode stack");
-			run("Analyze Particles...", "size=0-infinity circularity=0.00-1.00 show=Nothing clear stack");
-			innerResults = nResults;
-			selectWindow("inner2");
-			run("Analyze Particles...", "size=0-infinity circularity=0.00-1.00 show=Nothing clear stack");
-			inner2Results = nResults;
-			if (innerResults == inner2Results) {
-				close("inner2");
+		
+		
+		
+		
+		selectWindow("ch3");
+		run("Duplicate...", "duplicate");
+		run("Convert to Mask", "method=Default background=Dark calculate black");
+		run("Analyze Particles...", "size=0-0.6 circularity=0.0-1.00 show=Masks clear stack");
+		run("Invert LUT");
+		run("Options...", "iterations=1 count=2 black do=Dilate stack");
+		imageCalculator("Subtract stack", "ch3","Mask of ch3-1");
+		close("ch3-1");
+		close("Mask of ch3-1");
+		selectWindow("ch2");
+		run("Duplicate...", "duplicate");
+		run("Convert to Mask", "method=Default background=Dark calculate black");
+		run("Analyze Particles...", "size=0.00-0.60 show=Masks clear stack");
+		run("Invert LUT");
+		run("Options...", "iterations=1 count=2 black do=Dilate stack");
+		imageCalculator("Subtract stack", "ch2","Mask of ch2-1");
+		close("ch2-1");
+		close("Mask of ch2-1");
+		
+		imageCalculator("Max create stack", "ch2","ch3");
+		rename("max");
+		run("Statistical Region Merging", "q=20 showaverages 3d");
+		rename("filternucleus");
+		run("8-bit");
+		run("Subtract...", "value=18 stack");
+		setThreshold(0, 0);
+		run("Convert to Mask", "method=MinError background=Dark black");
+		run("Despeckle", "stack");
+		run("Fill Holes", "stack");
+		run("Outline", "stack");
+		run("Options...", "iterations=5 count=2 black do=Dilate stack");
+		run("Fill Holes", "stack");
+		run("Options...", "iterations=5 count=1 black do=Erode stack");
+		run("Analyze Particles...", "size=4500-30000 circularity=0.10-1.00 show=Masks clear stack");
+		run("Invert LUT");
+		run("Fill Holes", "stack");
+		rename("nucli");
+		close("filternucleus");
+		selectWindow("nucli");
+		run("Mean...", "radius=25 stack");
+		run("Convert to Mask", "method=Minimum background=Dark calculate black");
+		run("Options...", "iterations=30 count=3 black do=Dilate stack");
+		run("Analyze Particles...", "size=10000-40000 circularity=0.65-1.00 show=Ellipses exclude clear stack");
+		run("Invert", "stack");
+		run("Fill Holes", "stack");
+		rename("nucleus");
+		close("nucli");
+		imageCalculator("Subtract stack", "ch2","nucleus");
+		imageCalculator("Subtract stack", "ch3","nucleus");
+		
+		selectWindow("ch3");
+		run("Duplicate...", "title=raw duplicate");
+		run("Gaussian Blur...", "sigma=15 stack");
+		run("Find Edges", "stack");
+		selectWindow("ch3");
+		run("Duplicate...", "title=1stpass duplicate");
+		setAutoThreshold("RenyiEntropy dark");
+		setOption("BlackBackground", true);
+		run("Convert to Mask", "method=RenyiEntropy background=Dark calculate black");
+		run("Options...", "iterations=3 count=4 black do=Erode stack");
+		run("Analyze Particles...", "size=0.00-1.00 show=Masks clear stack");
+		run("Invert LUT");
+		imageCalculator("Subtract stack", "1stpass","Mask of 1stpass");
+		close("Mask of 1stpass");
+		selectWindow("1stpass");
+		run("Options...", "iterations=12 count=3 black do=Dilate stack");
+		run("Invert", "stack");
+		run("Gaussian Blur...", "sigma=15 stack");
+		run("Find Edges", "stack");
+		imageCalculator("Add stack", "1stpass", "raw");
+		close("raw");		
+		
+		imageCalculator("Min create stack", "ch2","ch3");
+		rename("min");
+		run("Morphological Filters (3D)", "operation=Closing element=Octagon x-radius=5 y-radius=5 z-radius=2");
+		rename("filter");
+		run("Duplicate...", "title=dup duplicate");
+		run("Duplicate...", "title=dup2 duplicate");
+		run("Multiply...", "value=2.000 stack");
+		run("Gaussian Blur...", "sigma=10 stack");
+		selectWindow("dup");
+		run("Subtract...", "value=25 stack");
+		run("Multiply...", "value=2.000 stack");
+		run("Mean...", "radius=10 stack");
+		imageCalculator("Average stack", "dup","dup2");
+		selectWindow("filter");
+		run("Mean...", "radius=10 stack");
+		run("Subtract...", "value=25 stack");
+		run("Multiply...", "value=1.25 stack");
+		imageCalculator("Average stack","filter", "dup");
+		close("dup");
+		close("dup2");
+		run("Duplicate...", "title=filteredge duplicate");
+		run("Find Edges", "stack");
+		
+		imageCalculator("Average create stack", "ch2","ch3");
+		rename("ave");
+		run("Morphological Filters (3D)", "operation=Gradient element=Ball x-radius=3 y-radius=3 z-radius=2");
+		run("Mean...", "radius=10 stack");
+		run("Find Edges", "stack");
+		rename("gradedge");
+		selectWindow("ave");
+		run("Morphological Filters (3D)", "operation=Laplacian element=Octagon x-radius=10 y-radius=10 z-radius=3");
+		rename("laplacian");
+		run("Duplicate...", "title=lapedge duplicate");
+		run("Mean...", "radius=10 stack");
+		run("Find Edges", "stack");
+		selectWindow("laplacian");
+		run("Invert", "stack");
+		imageCalculator("Subtract stack", "laplacian","nucleus");
+		run("Duplicate...", "duplicate");
+		run("Subtract...", "value=50 stack");
+		imageCalculator("Average stack", "laplacian-1","filter");
+		imageCalculator("Average stack", "laplacian-1","filter");
+		run("Multiply...", "value=1.5 stack");
+		selectWindow("laplacian");
+		run("Convert to Mask", "method=Shanbhag background=Dark calculate black");
+		run("Despeckle", "stack");
+		run("Despeckle", "stack");
+		run("Options...", "iterations=5 count=4 black do=Dilate stack");
+		run("Analyze Particles...", "size=0-80 pixel show=Masks clear stack");
+		run("Invert LUT");
+		imageCalculator("Subtract stack", "laplacian","Mask of laplacian");
+		close("Mask of laplacian");
+		run("Subtract...", "value=150 stack");
+		imageCalculator("Add stack", "laplacian-1","laplacian");
+		selectWindow("laplacian");
+		run("Multiply...", "value=2 stack");
+		imageCalculator("Add stack", "max","laplacian");
+		imageCalculator("Add stack", "max","min");
+		close("laplacian");
+		close("min");
+		
+		selectWindow("max");
+		run("Duplicate...", "duplicate");
+		run("Convert to Mask", "method=Huang background=Dark calculate black");
+		run("Analyze Particles...", "size=0.00-0.80 show=Masks clear stack");
+		run("Invert LUT");
+		run("Subtract...", "value=127 stack");
+		imageCalculator("Subtract stack", "max","Mask of max-1");
+		selectWindow("Mask of max-1");
+		run("Subtract...", "value=47 stack");
+		imageCalculator("Subtract stack", "laplacian-1","Mask of max-1");
+		close("max-1");
+		close("Mask of max-1");
+		
+		selectWindow("laplacian-1");
+		run("Duplicate...", "duplicate");
+		run("Convert to Mask", "method=Shanbhag background=Dark calculate black");
+		run("Invert", "stack");
+		run("Fill Holes", "stack");
+		run("Outline", "stack");
+		selectWindow("nucleus");
+		run("Duplicate...", "duplicate");
+		run("Options...", "iterations=10 count=1 black do=Dilate stack");
+		run("Options...", "iterations=10 count=2 black do=Dilate stack");
+		imageCalculator("Subtract stack", "laplacian-2","nucleus-1");
+		close("nucleus-1");
+		selectWindow("laplacian-2");
+		run("Fill Holes", "stack");
+		run("Options...", "iterations=3 count=4 black do=Close stack");
+		run("Fill Holes", "stack");
+		run("Options...", "iterations=10 count=4 black do=Erode stack");
+		run("Options...", "iterations=10 count=4 black do=Dilate stack");
+		run("Analyze Particles...", "size=15-Infinity show=Masks clear stack");
+		run("Invert LUT");
+		rename("laplacian");
+		close("laplacian-2");
+		
+		selectWindow("max");
+		run("Morphological Filters (3D)", "operation=Dilation element=Ball x-radius=4 y-radius=4 z-radius=2");
+		run("Mean...", "radius=10 stack");
+		rename("edgemax");
+		imageCalculator("Average stack", "filter","laplacian-1");
+		imageCalculator("Average stack", "max","ave");
+		imageCalculator("Average stack", "max","filter");
+		close("laplacian-1");
+		close("ave");
+		selectWindow("max");
+		run("Duplicate...", "duplicate");
+		run("Morphological Filters (3D)", "operation=Dilation element=Ball x-radius=4 y-radius=4 z-radius=2");
+		run("Mean...", "radius=10 stack");
+		rename("edgemax2");
+		imageCalculator("Average stack", "edgemax","edgemax2");
+		close("edgemax2");
+		selectWindow("edgemax");
+		run("Find Edges", "stack");
+		selectWindow("max-1");
+		run("Convert to Mask", "method=Minimum background=Dark calculate black");
+		imageCalculator("Add stack", "max-1","laplacian");
+		close("laplacian");
+		run("Duplicate...", "title=edges duplicate");
+		run("Gaussian Blur...", "sigma=10 stack");
+		run("Find Edges", "stack");
+		
+		selectWindow("max-1");
+		run("Options...", "iterations=15 count=3 black do=Dilate stack");
+		run("Gaussian Blur...", "sigma=20 stack");
+		run("Morphological Filters (3D)", "operation=Erosion element=Ball x-radius=5 y-radius=5 z-radius=2");
+		run("Find Edges", "stack");
+		rename("erosion");
+		close("max-1");
+		
+		imageCalculator("Add create stack", "gradedge","filteredge");
+		rename("addedge");
+		imageCalculator("Add stack", "edges","edgemax");
+		imageCalculator("Add stack", "lapedge","erosion");
+		imageCalculator("Add stack", "addedge","edges");
+		imageCalculator("Add stack", "addedge","lapedge");
+		imageCalculator("Add stack", "addedge","1stpass");
+		run("Convert to Mask", "method=Percentile background=Dark calculate black");
+		imageCalculator("Average create stack", "gradedge","filteredge");
+		rename("aveedge");
+		imageCalculator("Average stack", "edges","edgemax");
+		imageCalculator("Average stack", "lapedge","erosion");
+		imageCalculator("Average stack", "aveedge","edges");
+		imageCalculator("Average stack", "aveedge","lapedge");
+		imageCalculator("Average stack", "aveedge","1stpass");
+		run("Convert to Mask", "method=Li background=Dark calculate black");
+		imageCalculator("Max create stack", "gradedge","filteredge");
+		rename("maxedge");
+		imageCalculator("Max stack", "edges","edgemax");
+		imageCalculator("Max stack", "lapedge","erosion");
+		imageCalculator("Max stack", "maxedge","edges");
+		imageCalculator("Max stack", "maxedge","lapedge");
+		imageCalculator("Max stack", "maxedge","1stpass");
+		run("Convert to Mask", "method=Percentile background=Dark calculate black");
+		imageCalculator("Average stack", "addedge","aveedge");
+		imageCalculator("Average stack", "addedge","maxedge");
+		selectWindow("addedge");
+		setThreshold(225, 255);
+		run("Convert to Mask", "method=Default background=Dark black");
+		run("Invert", "stack");
+		run("Options...", "iterations=25 count=4 black do=Erosion stack");
+		run("Gaussian Blur...", "sigma=20 stack");
+		run("Convert to Mask", "method=Default background=Dark calculate black");
+		run("Watershed Irregular Features", "erosion=1 convexity_threshold=0.98 separator_size=0-Infinity stack");
+		run("Stack to Images");
+		selectWindow("nucleus");
+		run("Duplicate...", "title=nucli duplicate");
+		run("Stack to Images");
+		close("lapedge");
+		close("filteredge");
+		close("gradedge");
+		close("edgemax");
+		close("edges");
+		close("erosion");
+		close("1stpass");
+		close("aveedge");
+		close("maxedge");
+		close("max");
+		close("filter");
+		close("ch1");
+		close("ch2");
+		close("ch3");
+		
+		//slices=33;
+		for (i = 1; i < slices+1; i++) {
+			if (i < 10) {
+				run("BinaryReconstruct ", "mask=addedge-000"+i+" seed=nucli-000"+i+" white");
+				close("addedge-000"+i);
+			} else if (i < 100) {
+				run("BinaryReconstruct ", "mask=addedge-00"+i+" seed=nucli-00"+i+" white");
+				close("addedge-00"+i);
 			} else {
-				close("inner");
-				selectWindow("inner2");
-				rename("inner");
-				run("EDM Binary Operations", "iterations=30 operation=open stack");
-				run("EDM Binary Operations", "iterations=8 operation=erode stack");
+				run("BinaryReconstruct ", "mask=addedge-0"+i+" seed=nucli-0"+i+" white");
+				close("addedge-0"+i);
 			}
-			
-			
-			//setBatchMode("exit and display");
-	
-			// Back to finding the boutons
-			// Getting the outer edge of where the boutons should be
-			print("getting cell edges for boutons");
-			selectWindow("neurons");
-			run("Duplicate...", "title=outter duplicate");
-			run("EDM Binary Operations", "iterations=30 operation=open stack");
-			run("BinaryDilateNoMerge8 ", "iterations=25 white");
-			run("Analyze Particles...", "size=0-infinity circularity=0.00-1.00 show=Nothing display clear add stack");
-			cResult = nResults;
-			nerveLocation = Table.getColumn("Slice");
-			totalnerves = nerveLocation.length;
-			close("Results");
-			roiManager("Show None");
-			for (k = 0; k < cResult; k++) {
-				roiManager("Select", k);
-				run("Convex Hull");
-				run("Fit Spline");
-				run("Fill", "slice");
-				run("Select None");
-			}
-			close("ROI Manager");
-			close("neurons");
-			
-			// For debugging purposes
-			//run("Analyze Particles...", "size=0-infinity circularity=0.00-1.00 show=Nothing display clear stack");
-			//cResult = nResults;
-			//nerveLocation = Table.getColumn("Slice");
-			//totalnerves = nerveLocation.length;
-			//close("Results");
-			
-			lastslice = 0;
-			intSlice = 0;
-			for (intNerve = 0; intNerve < totalnerves; intNerve++) {
-			    if (lastslice != nerveLocation[intNerve]) {
-			    	selectWindow("outter");
-			    	setSlice(nerveLocation[intNerve]);
-					run("Create Selection");
-					roiManager("Add");
-					selectWindow("boutons");
-					roiManager("Select", intSlice);
-					run("Clear Outside", "slice");
-					intSlice++;
-					selectWindow("inner");
-			    	setSlice(nerveLocation[intNerve]);
-					run("Create Selection");
-					roiManager("Add");
-					selectWindow("boutons");
-					roiManager("Select", intSlice);
-					run("Clear", "slice");
-					intSlice++;
-					for (i = lastslice+1; i < nerveLocation[intNerve]; i++) {
-						setSlice(i);
-						run("Select All");
-						run("Clear", "slice");
-						run("Select None");
-					}
-					lastslice = nerveLocation[intNerve];
-			    }
-			}
-			selectWindow("boutons");
-			totalSlices = nSlices;
-			for (i = lastslice+1; i <= totalSlices; i++) {
-				setSlice(i);
-				run("Select All");
-				run("Clear", "slice");
-				run("Select None");
-			}
-			run("Select None");
-			roiManager("Deselect");
-			roiManager("Delete");
-			close("ROI Manager");
-			close("outter");
-			close("inner");
-			savePics = true;
-		} else {
-			print("no cells");
-			close("boutons");
-			selectWindow("neurons");
-			rename("boutons");
-			savePics = false;
 		}
-
-		//setBatchMode("exit and display");
-
-		print("running bouton check");
-		// Checking to make sure that particles can be found
-		boutonCheck("boutons", 1500, channelTypes, imageGroups, savePath, baseName, savePics);
-		boutonCheck("boutons", 2000, channelTypes, imageGroups, savePath, baseName, savePics);
-		boutonCheck("boutons", 2500, channelTypes, imageGroups, savePath, baseName, savePics);
-
-		Table.rename("Mouse-Results", "Results-"+image);
-		imageArray[image] = "Results-"+toString(image);
-			
-		run("Close All");
-		print("Finished processing the image. Took " + ((getTime()-programStart)/1000)/60 + "minutes");
-		//exit;
-	} 
-}
-
-//imageArray = newArray(16);
-//for (i=0;i<imageArray.length;i++) {
-//	imageArray[i] = "Results-"+i;
-//}
-
-imageArray = Array.deleteValue(imageArray, NaN);
-headings = split(Table.headings(imageArray[0]), "\t");
-for (k=1; k<imageArray.length; k++) {
-	if (imageArray[k] != "") {
-		Table.create("Data");
-		for (j = 0; j < headings.length; j++) {
-			transfer = Table.getColumn(headings[j], imageArray[k]);
-			current = Table.getColumn(headings[j], imageArray[0]);
-			current = Array.concat(current,transfer);
-			Table.setColumn(headings[j], current, "Data");
+		run("Images to Stack", "name=cellbodies title=nucli");
+		run("Options...", "iterations=5 count=4 black do=Dilate stack");
+		run("Analyze Particles...", "size=0-Infinity show=Nothing clear add stack");
+		close("cellbodies");
+		
+		//open the original file again
+		run("Bio-Formats Importer", "open=["+fpath+"] color_mode=Grayscale rois_import=[ROI manager] split_channels view=Hyperstack stack_order=XYCZT");
+		for (i = 0; i < nImages; i++) {	
+			selectImage(i+1);
+			img = getTitle();
+			if (img != "nucleus") {
+				rename("ch"+toString(i));
+			}
 		}
-		close(imageArray[0]);
-		close(imageArray[k]);
-		Table.rename("Data", imageArray[0]);
+		n = roiManager("count");
+		for (i=0; i<n; i++) {
+			selectWindow("ch3");
+		    roiManager("select", i);
+			run("Make Band...", "band=4");
+			run("Duplicate...", "title=ch3-roi-"+i);
+			run("Clear Outside");
+		}
+		run("Images to Stack", "name=ch3-roi title=ch3-roi");
+		
+		for (i=0; i<n; i++) {
+			selectWindow("ch2");
+		    roiManager("select", i);
+			run("Make Band...", "band=4");
+			run("Duplicate...", "title=ch2-roi-"+i);
+			run("Clear Outside");
+		}
+		run("Images to Stack", "name=ch2-roi title=ch2-roi");
+		run("Duplicate...", "title=synapse duplicate");
+		run("Convert to Mask", "method=IJ_IsoData background=Dark calculate black");
+		run("Despeckle", "stack");
+		run("Options...", "iterations=5 count=4 black do=Open stack");
+		run("Options...", "iterations=5 count=4 black do=Dilate stack");
+		run("Watershed Irregular Features", "erosion=1 convexity_threshold=0.99 separator_size=0-Infinity stack");
+		run("Set Measurements...", "area mean standard fit median stack redirect=None decimal=3");
+		run("Analyze Particles...", "size=0.25-5 show=Nothing clear add stack");
+		
+		run("Clear Results");
+		n = roiManager("count");
+		for (i=0; i<n; i++) {
+			selectWindow("ch2-roi");
+		    roiManager("select", i);
+			roiManager("Measure");
+			run("To Bounding Box");
+			horizontal = getValue("Width");
+			vertical = getValue("Height");
+			if (vertical >= horizontal) {
+				setKeyDown("alt");
+				profile = getProfile();
+				setKeyDown("none");
+			} else {
+				profile = getProfile();
+			}
+			for (j=0; j<profile.length; j++) {
+				setResult("Value-"+j, i, profile[j]);
+			}
+			updateResults();
+		}
+		//save Results table and image
+		//saveAs("Results", savePath + "-Results-ch2.csv");
+		run("Clear Results");
+		//saveAs("TIFF", mpath+"ch2.tif");
+		n = roiManager("count");
+		for (i=0; i<n; i++) {
+			selectWindow("ch3-roi");
+		    roiManager("select", i);
+			roiManager("Measure");
+			run("To Bounding Box");
+			horizontal = getValue("Width");
+			vertical = getValue("Height");
+			if (vertical >= horizontal) {
+				setKeyDown("alt");
+				profile = getProfile();
+				setKeyDown("none");
+			} else {
+				profile = getProfile();
+			}
+			for (j=0; j<profile.length; j++) {
+				setResult("Value-"+j, i, profile[j]);
+			}
+			updateResults();
+		}
+		//save Results table and image
+		//saveAs("Results", savePath + "-Results-ch3.csv");
+		run("Clear Results");
+		//saveAs("TIFF", mpath+"ch3.tif");
+		roiManager("reset");
+		
+		selectWindow("nucleus");
+		run("Analyze Particles...", "size=0.00-infinity show=Nothing clear add stack");
+		
+		run("Clear Results");
+		n = roiManager("count");
+		chosen = Math.round(random * n);
+		selectWindow("ch2");
+		for (i = 1; i <= nSlices; i++) {
+			setSlice(i);
+			roiManager("select", chosen);
+		    Roi.setPosition(i);
+		    roiManager("Measure");
+		    roiManager("select", chosen+1);
+		    Roi.setPosition(i);
+		    roiManager("Measure");
+
+		}
+		//save Results table and image
+		//saveAs("Results", savePath + "-Background-ch2.csv");
+		//run("Clear Results");
+
+		selectWindow("ch3");
+		chosen = 10;
+		for (i = 1; i <= nSlices; i++) {
+			setSlice(i);
+			roiManager("select", chosen);
+		    Roi.setPosition(i);
+		    roiManager("Measure");
+		    roiManager("select", chosen+1);
+		    Roi.setPosition(i);
+		    roiManager("Measure");
+		}
+		//save Results table and image
+		//saveAs("Results", savePath + "-Background-ch3.csv");
+		run("Clear Results");
+		roiManager("reset");
+		run("Close");
+		close("Results");
 	}
 }
-Table.rename(imageArray[0], "Results");
 
-//imageDir=getDirectory("Select Spinal Cord Folder for Image Processing");
-//roiDir=imageDir+"Analysis_Results\\";
-//imagelist = getFileList(imageDir);
-//for (i=0;i<imagelist.length;i++) {
-//	print(imagelist[i]);
-//}
-
-saveAs("Results", roiDir+"All-stats.csv");
 close("Results");
 
 print("Finished processing all images in "+imageDir+".");
 print("Took " + ((getTime()-programStart)/1000)/60 + "minutes");
-setBatchMode(false);
+//setBatchMode(false);
+
