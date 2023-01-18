@@ -95,9 +95,9 @@ for (image=0;image<1;image++) {
 		run("Fill Holes", "stack");
 		run("Outline", "stack");
 		run("Options...", "iterations=5 count=2 black do=Dilate stack");
-		run("Fill Holes", "stack");
-		run("Options...", "iterations=5 count=1 black do=Erode stack");
-		run("Analyze Particles...", "size=4500-30000 circularity=0.10-1.00 show=Masks clear stack");
+		run("Invert", "stack");
+		run("Options...", "iterations=15 count=3 black do=Erode stack");
+		run("Analyze Particles...", "size=4500-30000 circularity=0.33-1.00 show=Masks clear stack");
 		run("Invert LUT");
 		run("Fill Holes", "stack");
 		rename("nucli");
@@ -105,7 +105,9 @@ for (image=0;image<1;image++) {
 		selectWindow("nucli");
 		run("Mean...", "radius=25 stack");
 		run("Convert to Mask", "method=Minimum background=Dark calculate black");
-		run("Options...", "iterations=30 count=3 black do=Dilate stack");
+		run("Options...", "iterations=10 count=1 black do=Dilate stack");
+		run("Options...", "iterations=20 count=2 black do=Dilate stack");
+		run("Options...", "iterations=10 count=3 black do=Dilate stack");
 		run("Analyze Particles...", "size=10000-40000 circularity=0.65-1.00 show=Ellipses exclude clear stack");
 		run("Invert", "stack");
 		run("Fill Holes", "stack");
@@ -297,13 +299,19 @@ for (image=0;image<1;image++) {
 		setThreshold(225, 255);
 		run("Convert to Mask", "method=Default background=Dark black");
 		run("Invert", "stack");
+		run("Duplicate...", "title=smoother duplicate");
+		run("Options...", "iterations=25 count=4 black do=Erosion stack");
+		run("Gaussian Blur...", "sigma=20 stack");
+		run("Convert to Mask", "method=Default background=Dark calculate black");
+		imageCalculator("Add stack", "addedge","smoother");
+		close("smoother");
+		selectWindow("addedge");
 		run("Options...", "iterations=25 count=4 black do=Erosion stack");
 		run("Gaussian Blur...", "sigma=20 stack");
 		run("Convert to Mask", "method=Default background=Dark calculate black");
 		run("Watershed Irregular Features", "erosion=1 convexity_threshold=0.98 separator_size=0-Infinity stack");
 		run("Stack to Images");
 		selectWindow("nucleus");
-		run("Duplicate...", "title=nucli duplicate");
 		run("Stack to Images");
 		close("lapedge");
 		close("filteredge");
@@ -320,149 +328,263 @@ for (image=0;image<1;image++) {
 		close("ch2");
 		close("ch3");
 		
-		//slices=33;
+		//slices=25;
 		for (i = 1; i < slices+1; i++) {
 			if (i < 10) {
-				run("BinaryReconstruct ", "mask=addedge-000"+i+" seed=nucli-000"+i+" white");
+				run("BinaryReconstruct ", "mask=addedge-000"+i+" seed=nucleus-000"+i+" white");
 				close("addedge-000"+i);
 			} else if (i < 100) {
-				run("BinaryReconstruct ", "mask=addedge-00"+i+" seed=nucli-00"+i+" white");
+				run("BinaryReconstruct ", "mask=addedge-00"+i+" seed=nucleus-00"+i+" white");
 				close("addedge-00"+i);
 			} else {
-				run("BinaryReconstruct ", "mask=addedge-0"+i+" seed=nucli-0"+i+" white");
+				run("BinaryReconstruct ", "mask=addedge-0"+i+" seed=nucleus-0"+i+" white");
 				close("addedge-0"+i);
 			}
 		}
-		run("Images to Stack", "name=cellbodies title=nucli");
-		run("Options...", "iterations=5 count=4 black do=Dilate stack");
-		run("Analyze Particles...", "size=0-Infinity show=Nothing clear add stack");
+		run("Images to Stack", "name=cellbodies title=nucleus");
+		run("Options...", "iterations=5 count=2 black do=Dilate stack");
+		run("Options...", "iterations=3 count=1 black do=Dilate stack");
+		run("Fill Holes", "stack");
+		run("3D OC Options", "volume surface nb_of_obj._voxels nb_of_surf._voxels integrated_density mean_gray_value std_dev_gray_value median_gray_value minimum_gray_value maximum_gray_value centroid mean_distance_to_surface std_dev_distance_to_surface median_distance_to_surface centre_of_mass bounding_box dots_size=20 font_size=50 store_results_within_a_table_named_after_the_image_(macro_friendly) redirect_to=none");
+		run("3D Objects Counter", "threshold=128 slice=12 min.=10 max.=26214400 objects statistics summary");
+		selectWindow("Statistics for cellbodies");
+		len = Table.size;
+		for (i=1; i<len+1; i++) {
+			selectWindow("Objects map of cellbodies");
+			run("Duplicate...", "duplicate");
+			setThreshold(i, i);
+			run("Convert to Mask", "method=Default background=Dark black");
+			rename("cell-"+toString(i));
+		}
+		close("Objects map of cellbodies");
 		close("cellbodies");
+		close("Statistics for cellbodies");
+		close("Log");
 		
 		//open the original file again
 		run("Bio-Formats Importer", "open=["+fpath+"] color_mode=Grayscale rois_import=[ROI manager] split_channels view=Hyperstack stack_order=XYCZT");
-		for (i = 0; i < nImages; i++) {	
-			selectImage(i+1);
+		chan = 1;
+		for (i = 1; i < nImages+1; i++) {	
+			selectImage(i);
 			img = getTitle();
-			if (img != "nucleus") {
-				rename("ch"+toString(i));
+			if (img != "nucleus" && !img.contains("cell")) {
+				rename("ch"+toString(chan));
+				chan++;
 			}
 		}
-		n = roiManager("count");
-		for (i=0; i<n; i++) {
+		len = 2;
+		if (len>1) {
+			setForegroundColor(255, 255, 255);
+			selectWindow("cell-1");
+			run("Duplicate...", "title=merge duplicate");
+			// need to change this to be imageCalculator and run through all of the cells really fast
+		}
+		for (j=1; j<len+1; j++) {
+			selectWindow("cell-"+j);
+			run("Analyze Particles...", "size=0.00-infinity show=Nothing clear add stack");
+			n = roiManager("count");
+						
 			selectWindow("ch3");
-		    roiManager("select", i);
-			run("Make Band...", "band=4");
-			run("Duplicate...", "title=ch3-roi-"+i);
-			run("Clear Outside");
-		}
-		run("Images to Stack", "name=ch3-roi title=ch3-roi");
-		
-		for (i=0; i<n; i++) {
+			run("Duplicate...", "title=ch3-cell-"+j+" duplicate");
+			run("Duplicate...", "title=ch3-background-"+j+" duplicate");
 			selectWindow("ch2");
-		    roiManager("select", i);
-			run("Make Band...", "band=4");
-			run("Duplicate...", "title=ch2-roi-"+i);
-			run("Clear Outside");
-		}
-		run("Images to Stack", "name=ch2-roi title=ch2-roi");
+			run("Duplicate...", "title=ch2-cell-"+j+" duplicate");
+			run("Duplicate...", "title=ch2-background-"+j+" duplicate");
+
+			selectWindow("cell-"+j);
+			lslice = nSlices+1;
+			for (k=1; k<lslice; k++) {
+				selectWindow("cell-"+j);
+				setSlice(k);
+				run("Select None");
+				mean = getValue("Mean");
+				if (mean < 2) {
+					selectWindow("ch3-background-"+j);
+					setSlice(k);
+					run("Select All");
+					run("Clear", "slice");
+					run("Select None");
+					
+					selectWindow("ch2-background-"+j);
+					setSlice(k);
+					run("Select All");
+					run("Clear", "slice");
+					run("Select None");
+					
+					selectWindow("ch3-cell-"+j);
+					setSlice(k);
+					run("Select All");
+					run("Clear", "slice");
+					run("Select None");
+					
+					selectWindow("ch2-cell-"+j);
+					setSlice(k);
+					run("Select All");
+					run("Clear", "slice");
+					run("Select None");
+				}
+			}			
+			
+			for (i=0; i<n; i++) {
+				selectWindow("ch3-background-"+j);
+			    roiManager("select", i);
+				run("Clear Outside", "slice");
+				run("Select None");
+				selectWindow("ch3-cell-"+j);
+			    roiManager("select", i);
+				run("Make Band...", "band=4");
+				run("Clear Outside", "slice");
+				run("Select None");
+				selectWindow("ch2-background-"+j);
+			    roiManager("select", i);
+			    run("Clear Outside", "slice");
+				run("Select None");
+				selectWindow("ch2-cell-"+j);
+			    roiManager("select", i);
+				run("Make Band...", "band=4");
+				run("Clear Outside", "slice");
+				run("Select None");
+				if (len>1 && j==1) {
+					selectWindow("merge");
+					roiManager("select", i);
+					run("Make Band...", "band=4");
+					run("Fill", "slice");
+				} else if (len>1 && j>1) {
+					selectWindow("merge");
+					run("Duplicate...", "title=merge"+j+" duplicate");
+					roiManager("select", i);
+					
+			}
+			
+
+			if (j>1) {
+				imageCalculator("Add stack", "ch3-background-1", "ch3-background-"+j);
+				imageCalculator("Add stack", "ch2-background-1", "ch2-background-"+j);
+				imageCalculator("Add stack", "ch3-cell-1", "ch3-cell-"+j);
+				imageCalculator("Add stack", "ch2-cell-1", "ch2-cell-"+j);
+				close("ch3-background-"+j);
+				close("ch2-background-"+j);
+				close("ch3-cell-"+j);
+				close("ch2-cell-"+j);
+			}
+		}	
+			
+		selectWindow("ch2-cell-1");
 		run("Duplicate...", "title=synapse duplicate");
-		run("Convert to Mask", "method=IJ_IsoData background=Dark calculate black");
+		imageCalculator("Add stack", "ch3-cell-1", "ch3-background-1");
+		imageCalculator("Add stack", "ch2-cell-1", "ch2-background-1");
+		close("ch3-background-1");
+		close("ch2-background-1");
+		
+		for (i=1; i<n; i++) {
+			selectWindow("ch2");
+			roiManager("select", i);
+			baseline = getValue("Mean");
+			basestd = getValue("StdDev");
+			selectWindow("synapse");
+			roiManager("select", i);
+			run("Select None");
+		    val = baseline+2*basestd;
+		    run("Subtract...", "value="+val+" slice");
+		}
+		run("Convert to Mask", "method=IsoData background=Dark calculate black");
 		run("Despeckle", "stack");
 		run("Options...", "iterations=5 count=4 black do=Open stack");
 		run("Options...", "iterations=5 count=4 black do=Dilate stack");
 		run("Watershed Irregular Features", "erosion=1 convexity_threshold=0.99 separator_size=0-Infinity stack");
 		run("Set Measurements...", "area mean standard fit median stack redirect=None decimal=3");
-		run("Analyze Particles...", "size=0.25-5 show=Nothing clear add stack");
-		
-		run("Clear Results");
-		n = roiManager("count");
-		for (i=0; i<n; i++) {
-			selectWindow("ch2-roi");
-		    roiManager("select", i);
-			roiManager("Measure");
-			run("To Bounding Box");
-			horizontal = getValue("Width");
-			vertical = getValue("Height");
-			if (vertical >= horizontal) {
-				setKeyDown("alt");
-				profile = getProfile();
-				setKeyDown("none");
-			} else {
-				profile = getProfile();
+		run("Analyze Particles...", "size=0.25-5 show=Nothing clear add stack"); 
+			
+			run("Clear Results");
+			n = roiManager("count");
+			for (i=0; i<n; i++) {
+				selectWindow("ch2-roi");
+			    roiManager("select", i);
+				roiManager("Measure");
+				run("To Bounding Box");
+				horizontal = getValue("Width");
+				vertical = getValue("Height");
+				if (vertical >= horizontal) {
+					setKeyDown("alt");
+					profile = getProfile();
+					setKeyDown("none");
+				} else {
+					profile = getProfile();
+				}
+				for (j=0; j<profile.length; j++) {
+					setResult("Value-"+j, i, profile[j]);
+				}
+				updateResults();
 			}
-			for (j=0; j<profile.length; j++) {
-				setResult("Value-"+j, i, profile[j]);
+			//save Results table and image
+			//saveAs("Results", savePath + "-Results-ch2.csv");
+			run("Clear Results");
+			//saveAs("TIFF", mpath+"ch2.tif");
+			n = roiManager("count");
+			for (i=0; i<n; i++) {
+				selectWindow("ch3-roi");
+			    roiManager("select", i);
+				roiManager("Measure");
+				run("To Bounding Box");
+				horizontal = getValue("Width");
+				vertical = getValue("Height");
+				if (vertical >= horizontal) {
+					setKeyDown("alt");
+					profile = getProfile();
+					setKeyDown("none");
+				} else {
+					profile = getProfile();
+				}
+				for (j=0; j<profile.length; j++) {
+					setResult("Value-"+j, i, profile[j]);
+				}
+				updateResults();
 			}
-			updateResults();
-		}
-		//save Results table and image
-		//saveAs("Results", savePath + "-Results-ch2.csv");
-		run("Clear Results");
-		//saveAs("TIFF", mpath+"ch2.tif");
-		n = roiManager("count");
-		for (i=0; i<n; i++) {
-			selectWindow("ch3-roi");
-		    roiManager("select", i);
-			roiManager("Measure");
-			run("To Bounding Box");
-			horizontal = getValue("Width");
-			vertical = getValue("Height");
-			if (vertical >= horizontal) {
-				setKeyDown("alt");
-				profile = getProfile();
-				setKeyDown("none");
-			} else {
-				profile = getProfile();
+			//save Results table and image
+			//saveAs("Results", savePath + "-Results-ch3.csv");
+			run("Clear Results");
+			//saveAs("TIFF", mpath+"ch3.tif");
+			roiManager("reset");
+			
+			selectWindow("nucleus");
+			run("Analyze Particles...", "size=0.00-infinity show=Nothing clear add stack");
+			
+			run("Clear Results");
+			n = roiManager("count");
+			chosen = Math.round(random * n);
+			selectWindow("ch2");
+			for (i = 1; i <= nSlices; i++) {
+				setSlice(i);
+				roiManager("select", chosen);
+			    Roi.setPosition(i);
+			    roiManager("Measure");
+			    roiManager("select", chosen+1);
+			    Roi.setPosition(i);
+			    roiManager("Measure");
+	
 			}
-			for (j=0; j<profile.length; j++) {
-				setResult("Value-"+j, i, profile[j]);
+			//save Results table and image
+			//saveAs("Results", savePath + "-Background-ch2.csv");
+			//run("Clear Results");
+	
+			selectWindow("ch3");
+			chosen = 10;
+			for (i = 1; i <= nSlices; i++) {
+				setSlice(i);
+				roiManager("select", chosen);
+			    Roi.setPosition(i);
+			    roiManager("Measure");
+			    roiManager("select", chosen+1);
+			    Roi.setPosition(i);
+			    roiManager("Measure");
 			}
-			updateResults();
+			//save Results table and image
+			//saveAs("Results", savePath + "-Background-ch3.csv");
+			run("Clear Results");
+			roiManager("reset");
+			run("Close");
+			close("Results");
 		}
-		//save Results table and image
-		//saveAs("Results", savePath + "-Results-ch3.csv");
-		run("Clear Results");
-		//saveAs("TIFF", mpath+"ch3.tif");
-		roiManager("reset");
-		
-		selectWindow("nucleus");
-		run("Analyze Particles...", "size=0.00-infinity show=Nothing clear add stack");
-		
-		run("Clear Results");
-		n = roiManager("count");
-		chosen = Math.round(random * n);
-		selectWindow("ch2");
-		for (i = 1; i <= nSlices; i++) {
-			setSlice(i);
-			roiManager("select", chosen);
-		    Roi.setPosition(i);
-		    roiManager("Measure");
-		    roiManager("select", chosen+1);
-		    Roi.setPosition(i);
-		    roiManager("Measure");
-
-		}
-		//save Results table and image
-		//saveAs("Results", savePath + "-Background-ch2.csv");
-		//run("Clear Results");
-
-		selectWindow("ch3");
-		chosen = 10;
-		for (i = 1; i <= nSlices; i++) {
-			setSlice(i);
-			roiManager("select", chosen);
-		    Roi.setPosition(i);
-		    roiManager("Measure");
-		    roiManager("select", chosen+1);
-		    Roi.setPosition(i);
-		    roiManager("Measure");
-		}
-		//save Results table and image
-		//saveAs("Results", savePath + "-Background-ch3.csv");
-		run("Clear Results");
-		roiManager("reset");
-		run("Close");
-		close("Results");
 	}
 }
 
