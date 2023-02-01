@@ -177,7 +177,13 @@ for (image=0;image<1;image++) {
 		rename("rawline");
 		close("raw");
 		imageCalculator("Subtract stack", "rawline","nucli");
-		imageCalculator("Add stack", "ch2","rawline");
+		selectWindow("rawline");
+		run("Duplicate...", "title=minline duplicate");
+		run("Options...", "iterations=20 count=4 black do=Close stack");
+		run("Skeletonize", "stack");
+		run("Options...", "iterations=3 count=3 black do=Dilate stack");
+		imageCalculator("Add stack", "ch2","minline");
+		close("minline");
 		selectWindow("rawline");
 		run("Duplicate...", "title=line2 duplicate");
 		run("Options...", "iterations=3 count=3 black do=Dilate stack");
@@ -211,7 +217,13 @@ for (image=0;image<1;image++) {
 		rename("3line");
 		close("1stpass");
 		imageCalculator("Subtract stack", "3line","nucli");
-		imageCalculator("Add stack", "ch3","3line");
+		selectWindow("3line");
+		run("Duplicate...", "title=minline duplicate");
+		run("Options...", "iterations=20 count=4 black do=Close stack");
+		run("Skeletonize", "stack");
+		run("Options...", "iterations=3 count=3 black do=Dilate stack");
+		imageCalculator("Add stack", "ch3","minline");
+		close("minline");
 		selectWindow("3line");
 		run("Duplicate...", "title=line3 duplicate");
 		run("Options...", "iterations=3 count=3 black do=Dilate stack");
@@ -374,7 +386,6 @@ for (image=0;image<1;image++) {
 		run("Options...", "iterations=2 count=3 black do=Dilate stack");
 		rename("laplacian");
 		close("laplacian-2");
-		run("Invert", "stack");
 				
 		selectWindow("max");
 		run("Morphological Filters (3D)", "operation=Dilation element=Ball x-radius=4 y-radius=4 z-radius=2");
@@ -468,11 +479,12 @@ for (image=0;image<1;image++) {
 				
 		imageCalculator("Average stack", "celled1","celled4");
 		imageCalculator("Average stack", "celled2","celled3");
-		imageCalculator("Average stack", "celled5","celled9");
-		imageCalculator("Average stack", "celled7","celled8");
+		imageCalculator("Average stack", "celled7","celled9");
+		imageCalculator("Average stack", "celled6","celled8");
 		imageCalculator("Average stack", "celled1","celled2");
-		imageCalculator("Average stack", "celled5","celled7");
-		imageCalculator("Average stack", "celled1","celled5");
+		imageCalculator("Average stack", "celled7","celled5");
+		imageCalculator("Average stack", "celled6","celled7");
+		imageCalculator("Average stack", "celled1","celled6");
 		imageCalculator("Add stack", "celled1", "nucleus");
 		close("celled2");
 		close("celled3");
@@ -495,7 +507,7 @@ for (image=0;image<1;image++) {
 		run("Analyze Particles...", "size=300-infinity show=Masks clear stack");
 		run("Invert LUT");
 		rename("selected0");
-		close("tick1");
+		close("tick0");
 		selectWindow("tick1");
 		setThreshold(200, 255);
 		run("Convert to Mask", "method=Default background=Dark black");
@@ -577,24 +589,30 @@ for (image=0;image<1;image++) {
 		run("Convert to Mask", "method=Default background=Dark black");
 		run("Despeckle", "stack");
 		run("Fill Holes", "stack");
-		run("Analyze Particles...", "size=20-Infinity circularity=0.10-1.00 show=Masks clear stack");
+		run("Analyze Particles...", "size=20-70 circularity=0.10-1.00 show=Masks clear stack");
+		run("Invert LUT");
+		rename("fake2");
+		close("fake1");
+		run("Options...", "iterations=10 count=4 black do=Dilate stack");
+		run("Analyze Particles...", "size=0-infinity circularity=0.45-1.00 show=Masks clear stack");
 		run("Invert LUT");
 		rename("fake");
-		close("fake1");
-		run("Options...", "iterations=10 count=1 black do=Dilate stack");
-		run("Options...", "iterations=10 count=4 black do=Dilate stack");
+		close("fake2");
 				
 		imageCalculator("AND create stack", "selected0","ch3");
 		rename("nucli");
 		setThreshold(255, 255);
 		run("Convert to Mask", "method=Default background=Dark black");
 		run("Despeckle", "stack");
-		run("Analyze Particles...", "size=45-infinity show=Masks clear stack");
+		run("Fill Holes", "stack");
+		run("Analyze Particles...", "size=45-infinity circularity=0.10-1.00 show=Masks clear stack");
 		run("Invert LUT");
 		rename("nucleus");
 		close("nucli");
-		run("Duplicate...", "title=false duplicate");
 		run("Duplicate...", "title=blank");
+		run("Select All");
+		run("Clear", "slice");
+		run("Select None");
 		s = Table.getColumn('Slice');
 		x = Table.getColumn('X');
 		y = Table.getColumn('Y');
@@ -642,6 +660,8 @@ for (image=0;image<1;image++) {
 			}
 		}
 		setForegroundColor(255,255,255);
+		selectWindow("nucleus");
+		run("Options...", "iterations=2 count=4 black do=Erode stack");
 		for (i = 0; i < c.length; i++) {
 			selectWindow("nucleus");
 			setSlice(s[i]);
@@ -659,6 +679,8 @@ for (image=0;image<1;image++) {
 				run("Clear", "slice");
 				run("Select None");
 			}
+		}
+		for (i = 0; i < c.length; i++) {
 			if (i > 0 && skip[i] == 0) {				
 				if (c[i] == c[i-1] && s[i] != s[i-1]+1) {
 					selectWindow("nucleus");
@@ -674,7 +696,11 @@ for (image=0;image<1;image++) {
 				}
 			}
 		}
+		
+		
 		imageCalculator("Subtract stack", "fake","nucleus");
+		selectWindow("fake");
+		run("Options...", "iterations=3 count=1 black do=Dilate stack");
 		imageCalculator("Subtract stack", "selected0", "fake");
 		imageCalculator("Subtract stack", "selected1", "fake");
 		imageCalculator("Subtract stack", "selected2", "fake");
@@ -712,6 +738,7 @@ for (image=0;image<1;image++) {
 		run("Invert LUT");
 		rename("seed4");
 		close("se4");
+		close("nucleus");
 		
 		for (j=0; j<5; j++) {
 			selectWindow("selected"+j);
@@ -730,6 +757,7 @@ for (image=0;image<1;image++) {
 			}
 			run("Images to Stack", "name=selected"+j+" title=seed"+j);
 		}
+
 		
 		imageCalculator("Average create stack", "selected2","selected4");
 		rename("merge");
@@ -746,42 +774,163 @@ for (image=0;image<1;image++) {
 		run("Convert to Mask", "method=Default background=Dark black");
 		run("Options...", "iterations=5 count=4 black do=Close stack");
 		
-
-
-
-
-		
-		selectWindow("selected0");
-		run("Analyze Particles...", "size=0-infinity show=Nothing clear add stack");
+		selectWindow("merge");
+		run("Duplicate...", "title=bottom");
+		run("Select All");
+		run("Clear", "slice");
+		run("Select None");
+		run("Duplicate...", "title=top");
+		selectWindow("merge");
+		run("Analyze Particles...", "size=100-infinity show=Nothing clear add stack");
 		roiManager("Show None");
 		n = roiManager("count");
-		for (j=1; j<5; j++) {
-			for (i = 0; i < n; i++) {
-				selectWindow("selected"+j);
-				roiManager("select", i);
-				area0 = getValue("Area");
-				if (getValue("Mean") > 10) {
-					x = getValue("X");
-					y = getValue("Y");
-					run("Select None");
+		slices = 33;
+		for (i = 0; i < n; i++) {
+			b = 0;
+			t = 0;
+			selectWindow("merge");
+			roiManager("select", i);
+			s = getSliceNumber();
+			x = getValue("X");
+			y = getValue("Y");
+			if (s > 1) {
+				selectWindow("merge");
+				setSlice(s-1);
+				p = getValue("Mean");
+				run("Select None");
+				if (p > 5 ) {
 					doWand(x,y);
-					area1 = getValue("Area");
-					if (area1 > area0+250) {
-						run("Clear", "slice");
-					}
-					
-				}
-				mean = getValue("Mean, X, Y");
-				doWand(x[g], y[i-1]);
-				run("Fit Ellipse");
-				for (j=s[i-1]+1; j<s[i]; j++) {
-					setSlice(j);
+					selectWindow("bottom");
 					run("Restore Selection");
 					run("Fill", "slice");
 					run("Select None");
+					b = 1;
 				}
 			}
+			
+			if (s < slices) {
+				selectWindow("merge");
+				setSlice(s+1);
+				p = getValue("Mean");
+				run("Select None");
+				if (p > 5 ) {
+					doWand(x,y);
+					selectWindow("top");
+					run("Restore Selection");
+					run("Fill", "slice");
+					run("Select None");
+					t = 1;
+				}
+			}
+			
+			if (b == 1 && t == 1) {
+				imageCalculator("AND stack", "bottom","top");
+				selectWindow("bottom");
+				doWand(x,y);
+				selectWindow("merge");
+				setSlice(s);
+				run("Restore Selection");
+				run("Fill", "slice");
+				run("Select None");
+				print(s, " Worked ", "X&Y ", x, " ", y);				
+				selectWindow("bottom");
+				run("Select All");
+				run("Clear", "slice");
+				run("Select None");
+				selectWindow("top");
+				run("Select All");
+				run("Clear", "slice");
+				run("Select None");
+			} else if (b == 1 && t == 0) {
+
+				selectWindow("bottom");
+				run("Select All");
+				run("Clear", "slice");
+				run("Select None");
+				selectWindow("top");
+				run("Select All");
+				run("Clear", "slice");
+				run("Select None");			
+			} else if (b == 0 && t == 1) {
+
+				selectWindow("bottom");
+				run("Select All");
+				run("Clear", "slice");
+				run("Select None");
+				selectWindow("top");
+				run("Select All");
+				run("Clear", "slice");
+				run("Select None");				
+			}
 		}
+		
+		
+		selectWindow("merge");
+		run("Analyze Particles...", "size=100-infinity show=Masks clear stack");
+		run("Invert LUT");
+		rename("bottom");
+		close("merge");
+		selectWindow("bottom");
+		run("Duplicate...", "title=top duplicate");
+		run("Stack to Images");
+		slices=33;
+		for (i = slices-1; i > 1; i--) {
+			if (i < 10) {
+				imageCalculator("Average stack", "top-000"+i-1, "top-000"+i);
+			} else if (i == 10) {
+				imageCalculator("Average stack", "top-000"+i-1, "top-00"+i);
+			} else if (i < slices-1) {
+				imageCalculator("Average stack", "top-00"+i-1, "top-00"+i);
+			} else {
+				selectWindow("top-00"+slices);
+				run("Subtract...", "value=192 stack");
+				selectWindow("top-00"+slices-1);
+				run("Subtract...", "value=128 stack");
+				imageCalculator("Average stack", "top-00"+slices-1, "top-00"+slices);
+				selectWindow("top-00"+slices-2);
+				run("Subtract...", "value=64 stack");
+				imageCalculator("Average stack", "top-00"+slices-2, "top-00"+slices-1);				
+			}
+		}
+		run("Images to Stack", "name=top title=top");
+		selectWindow("bottom");
+		run("Stack to Images");
+		slices=33;
+		for (i = 3; i < slices+1; i++) {
+			if (i == 3) {
+				selectWindow("bottom-0001");
+				run("Subtract...", "value=192 stack");
+				selectWindow("bottom-0002");
+				run("Subtract...", "value=128 stack");
+				imageCalculator("Average stack", "bottom-0002", "bottom-0001");
+				selectWindow("bottom-0003");
+				run("Subtract...", "value=64 stack");
+				imageCalculator("Average stack", "bottom-0003", "bottom-0002");				
+			} else if (i < 10) {
+				imageCalculator("Average stack", "bottom-000"+i, "bottom-000"+i-1);
+			} else if (i == 10) {
+				imageCalculator("Average stack", "bottom-00"+i, "bottom-000"+i-1);
+			} else {
+				imageCalculator("Average stack", "bottom-00"+i, "bottom-00"+i-1);
+			}
+		}
+		run("Images to Stack", "name=bottom title=bottom");	
+		imageCalculator("Average stack", "bottom","top");
+		close("top");
+		selectWindow("bottom");
+		setThreshold(96, 255);
+		run("Convert to Mask", "method=Default background=Dark black");
+		run("Options...", "iterations=10 count=1 black do=Open stack");
+		run("Options...", "iterations=5 count=1 black do=Erode stack");
+		run("Analyze Particles...", "size=100-infinity show=Masks clear stack");
+		run("Invert LUT");
+		rename("cells");
+		close("bottom");
+		run("Options...", "iterations=20 count=4 black do=Dilate stack");
+		run("Options...", "iterations=5 count=3 black do=Dilate stack");
+		run("Options...", "iterations=5 count=2 black do=Dilate stack");
+		run("Options...", "iterations=2 count=1 black do=Erode stack");
+		
 		
 		
 		
@@ -789,8 +938,7 @@ for (image=0;image<1;image++) {
 	
 		
 				
-		
-		
+		//Don't need? Pretty sure I don't
 		imageCalculator("Average stack", "max","edgemax");
 		imageCalculator("Average stack", "lapedge","laplacian");
 		imageCalculator("Average stack", "gradedge","entropy");
@@ -806,10 +954,7 @@ for (image=0;image<1;image++) {
 		selectWindow("max");
 		run("Convert to Mask", "method=Intermodes background=Dark calculate black");
 		
-		
-		
-		
-		
+		//Also Don't need
 		run("Gaussian Blur...", "sigma=20 stack");
 		run("Convert to Mask", "method=Default background=Dark calculate black");
 		run("Watershed Irregular Features", "erosion=1 convexity_threshold=0.98 separator_size=0-Infinity stack");
@@ -837,6 +982,12 @@ for (image=0;image<1;image++) {
 		run("Options...", "iterations=5 count=2 black do=Dilate stack");
 		run("Options...", "iterations=3 count=1 black do=Dilate stack");
 		run("Fill Holes", "stack");
+
+		
+		
+		
+		
+		// Might need this
 		run("3D OC Options", "volume surface nb_of_obj._voxels nb_of_surf._voxels integrated_density mean_gray_value std_dev_gray_value median_gray_value minimum_gray_value maximum_gray_value centroid mean_distance_to_surface std_dev_distance_to_surface median_distance_to_surface centre_of_mass bounding_box dots_size=20 font_size=50 store_results_within_a_table_named_after_the_image_(macro_friendly) redirect_to=none");
 		run("3D Objects Counter", "threshold=128 slice=12 min.=10 max.=26214400 objects statistics summary");
 		selectWindow("Statistics for cellbodies");
