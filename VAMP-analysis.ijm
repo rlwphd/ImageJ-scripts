@@ -1,20 +1,50 @@
-// Getting the folder where images are located
-imageDir=getDirectory("Select Spinal Cord Folder for Image Processing");
-roiDir=imageDir+"Analysis_Results\\";
-imagelist = getFileList(imageDir);
-imageArray = newArray;
-File.makeDirectory(roiDir);
-saveSettings();
+// Getting the file or folder where images are located
+items = newArray("file", "folder");
+Dialog.create("File or Folder Analysis");
+Dialog.addChoice("Would you like to analyze a whole folder or an individual file?", items, "folder");
+Dialog.addMessage("When processing a whole folder, images need to have the same markers in the channels.\nOtherwise the analysis may not work!!");
+Dialog.show();
+process = Dialog.getChoice();
+if (process == "file") {
+	path = File.openDialog("Select File for Image Processing");
+	imageDir = File.getParent(path);
+	roiDir=imageDir+"\\Analysis_Results\\";
+	imagelist = newArray(File.getName(path));
+	File.makeDirectory(roiDir);
+} else {
+	imageDir=getDirectory("Select Spinal Cord Folder for Image Processing");
+	roiDir=imageDir+"Analysis_Results\\";
+	imagelist = getFileList(imageDir);
+	imageArray = newArray;
+	File.makeDirectory(roiDir);
+	saveSettings();
+	//setBatchMode(true);
+}
+
+channel=3;
+Dialog.create("Fluorescence Analysis");
+Dialog.addNumber("Number of Channels in Image:", channel);
+Dialog.show();
+channel=Dialog.getNumber();
+types = newArray("Fast Blue", "VGLUT1", "VGLUT2", "VGAT/VIAAT", "VAMP1", "VAMP2", "NeuN", "ChAT", "Other");
+Dialog.create("Channel Fluorescence");
+for (i=1; i<=channel; i++) {
+	Dialog.addChoice("Channel "+i+" Fluorescent Marker:", types);
+}
+Dialog.show();
+chanArray = newArray(channel);
+for (i=0; i<channel; i++) {
+	chanArray[i] = Dialog.getChoice();
+}
 setOption("BlackBackground", true);
+setForegroundColor(255, 255, 255);
 setBackgroundColor(0, 0, 0);
-run("Set Measurements...", "area mean standard centroid fit median stack redirect=None decimal=3");
-//setBatchMode(true);
+run("Set Measurements...", "area mean standard centroid fit median stack redirect=None decimal=3");	
 
 start = getTime();
 // Grabbing each image individually for analysis
 //for (image=0;image<imagelist.length;image++) {
 for (image=0;image<1;image++) {
-
 
 // Opening each image that is a 60x image and getting the image title
 // This can be modified to whatever file ending is needed (could just be .oib)
@@ -28,9 +58,19 @@ for (image=0;image<1;image++) {
 		mpath = roiDir+maskName;
 		run("Bio-Formats Importer", "open=["+fpath+"] color_mode=Grayscale rois_import=[ROI manager] split_channels view=Hyperstack stack_order=XYCZT");
 
-		for (i = 0; i < nImages; i++) {	
-			selectImage(i+1);
-			rename("ch"+toString(i+1));
+		for (i = 1; i <= nImages; i++) {	
+			selectImage(i);
+			if (chanArray[i] == "Fast Blue") {
+				rename("FB");
+			} else if (chanArray[i] == "NeuN" || chanArray[i] == "ChAT") {
+				rename("NC");
+			} else if (chanArray[i] == "VGLUT1" || chanArray[i] == "VGLUT2" || chanArray[i] == "VGAT/VIAAT") {
+				rename("Vesicular");
+			} else if (chanArray[i] == "Other") {
+				rename("Other");
+			} else {
+				rename("Vamp");
+			}
 			slices = nSlices;
 			for (j=1; j<=slices; j++) {
 		   		setSlice(j);
@@ -45,11 +85,11 @@ for (image=0;image<1;image++) {
 		    		if (percent[k]<=10.1) {
 		    			bottom = k;
 		    		}
-		    		if (percent[k]>94 && percent[k]<=97 && k>300 && i==0) {
+		    		if (percent[k]>94 && percent[k]<=97 && k>300 && chanArray[i]=="Fast Blue" || chanArray[i]=="NeuN" || chanArray[i]=="ChAT") {
 		    			multiply = 4095/(k-bottom);
-		    		} else if (percent[k]>94 && percent[k]<=97 && k<300 && i==0) {
+		    		} else if (percent[k]>94 && percent[k]<=97 && k<300 && chanArray[i]=="Fast Blue" || chanArray[i]=="NeuN" || chanArray[i]=="ChAT") {
 		    			multiply = 0.5;
-		    		} else if (percent[k]>90 && percent[k]<=93 && i!=0) {
+		    		} else if (percent[k]>90 && percent[k]<=93 && chanArray[i]!="Fast Blue" && chanArray[i]!="NeuN" && chanArray[i]!="ChAT") {
 		    			multiply = 4095/(k-bottom);
 		    		}
 		    	}
@@ -59,71 +99,104 @@ for (image=0;image<1;image++) {
 			run("Max...", "value=4095 stack");			
 			run("8-bit");
 		}
+		
 		xScaled = 1;
 		yScaled = 1;
 		zScaled = 1;
 		toScaled(xScaled,yScaled,zScaled);
+		if (xScaled == yScaled) {
+			run("Set Scale...", "distance="+(1/xScaled)+" known=1 unit=um global");
+		} else {
+			run("Set Scale...", "distance="+(1/xScaled)+" known=1 pixel="+(yScaled/xScaled)+" unit=um global");
+		}
 		
-		fastblue=false
-		selectWindow("ch1");
+		fastblue=false;
+		if (isOpen("FB")) {
 			
+		}
 		
-		
-		
-		if (fastblue != true) {
+		if (!fastblue) {
 			setForegroundColor(255, 255, 255);
 			setBackgroundColor(0, 0, 0);
-			selectWindow("ch3");
-			run("Duplicate...", "duplicate");
-			run("Convert to Mask", "method=Default background=Dark calculate black");
-			run("Analyze Particles...", "size=0-0.6 circularity=0.0-1.00 show=Masks clear stack");
-			run("Invert LUT");
-			run("Options...", "iterations=1 count=2 black do=Dilate stack");
-			imageCalculator("Subtract stack", "ch3","Mask of ch3-1");
-			close("ch3-1");
-			close("Mask of ch3-1");
-			selectWindow("ch2");
-			run("Duplicate...", "duplicate");
-			run("Convert to Mask", "method=Default background=Dark calculate black");
-			run("Analyze Particles...", "size=0.00-0.60 show=Masks clear stack");
-			run("Invert LUT");
-			run("Options...", "iterations=1 count=2 black do=Dilate stack");
-			imageCalculator("Subtract stack", "ch2","Mask of ch2-1");
-			close("ch2-1");
-			close("Mask of ch2-1");
-			
-			imageCalculator("Max create stack", "ch2","ch3");
-			rename("max");
-			run("Statistical Region Merging", "q=30 showaverages 3d");
-			rename("filternucleus");
-			run("8-bit");
-			run("Subtract...", "value=15 stack");
-			setThreshold(0, 0);
-			run("Convert to Mask", "method=MinError background=Dark black");
-			run("Despeckle", "stack");
-			run("Fill Holes", "stack");
-			run("Outline", "stack");
-			run("Options...", "iterations=5 count=2 black do=Dilate stack");
-			run("Invert", "stack");
-			run("Options...", "iterations=5 count=3 black do=Erode stack");
-			if (xScaled == yScaled) {
-				run("Set Scale...", "distance="+(1/xScaled)+" known=1 unit=um global");
+			vamp1 = Array.filter(chanArray, "VAMP1");
+			if (vamp1.length > 0) {
+				selectWindow("Vamp");
+				run("Duplicate...", "title=nucli duplicate");
+				setThreshold(0,0);
+				run("Convert to Mask", "method=MinError background=Dark black");
+				run("Options...", "iterations=1 count=3 black do=Close stack");
+				run("Options...", "iterations=3 count=3 black do=Open stack");
 			} else {
-				run("Set Scale...", "distance="+(1/xScaled)+" known=1 pixel="+(yScaled/xScaled)+" unit=um global");
+				imageCalculator("Add create stack", "Vesicular","Vamp");
+				rename("nucli");
+				setThreshold(0,0);
+				run("Convert to Mask", "method=MinError background=Dark black");
+				run("Duplicate...", "title=copy duplicate");
+				run("Options...", "iterations=2 count=4 black do=Erode stack");
+				run("Options...", "iterations=3 count=3 black do=Open stack");
+				run("Options...", "iterations=5 count=1 black do=Dilate stack");
+				run("Options...", "iterations=5 count=2 black do=Dilate stack");
+				run("Options...", "iterations=10 count=3 black do=Dilate stack");
+				run("Options...", "iterations=20 count=4 black do=Dilate stack");
+				imageCalculator("AND stack", "nucli","copy");
+				close("copy");
+				run("Options...", "iterations=3 count=3 black do=Close stack");
 			}
-			run("Analyze Particles...", "size=45-200 circularity=0.2-1.00 show=Masks clear stack");
-			run("Invert LUT");
-			run("Fill Holes", "stack");
-			rename("nucli");
-			close("filternucleus");
+			run("Analyze Particles...", "size=50-250 circularity=0.2-1.00 show=[Bare Outlines] clear stack");
+			r = Table.getColumn("Round");
+			s = Table.getColumn("Slice");
+			x = Table.getColumn('X');
+			y = Table.getColumn('Y');
+			toUnscaled(x, y);
+			for (i = 1; i < s[0]; i++) {
+				selectWindow("nucli");
+				setSlice(i);
+				run("Select All");
+				run("Clear", "slice");
+				run("Select None");
+			}
+			slices=15;
+			for (i=s[s.length-1]+1; i<=slices; i++) {
+				selectWindow("nucli");
+				setSlice(i);
+				run("Select All");
+				run("Clear", "slice");
+				run("Select None");						
+			}
+			for (i = 0; i < r.length; i++) {
+		    	selectWindow("Drawing of nucli");
+		    	run("Select None");
+		    	setSlice(s[i]);
+				k = i;
+			    for (j=i; j<r.length; j++) {
+			    	if (s[j]==s[i] && r[j] >= 0.5) {
+		    			setKeyDown("shift");
+		    			doWand(x[j],y[j]);
+		    			setKeyDown("none");
+		    			k=j;
+			    	} else if (s[j]==s[i]) {
+			    		k=j;
+			    	}
+			    }
+		    	selectWindow("nucli");
+		    	setSlice(s[i]);
+		    	run("Restore Selection");
+		    	wait(10);
+		    	run("Clear Outside", "slice");
+		    	wait(10);
+		    	run("Select None");
+		    	i = k;
+			}
+			close("Drawing of nucli");
 			selectWindow("nucli");
-			run("Mean...", "radius=25 stack");
+			run("Fill Holes", "stack");
+			run("Mean...", "radius=15 stack");
 			run("Convert to Mask", "method=Minimum background=Dark calculate black");
 			close("Log");			
 			run("Options...", "iterations=10 count=1 black do=Dilate stack");
 			run("Options...", "iterations=20 count=2 black do=Dilate stack");
 			run("Options...", "iterations=10 count=3 black do=Dilate stack");
-			run("Analyze Particles...", "size=90-350 circularity=0.6-1.00 show=Ellipses display exclude clear stack");
+			run("Analyze Particles...", "size=100-450 circularity=0.6-1.00 show=Ellipses display exclude clear stack");
 			s = Table.getColumn("Slice");
 			x = Table.getColumn('X');
 			y = Table.getColumn('Y');
@@ -177,10 +250,31 @@ for (image=0;image<1;image++) {
 			run("Options...", "iterations=5 count=2 black do=Dilate stack");
 			run("Options...", "iterations=5 count=3 black do=Dilate stack");
 			run("Options...", "iterations=5 count=4 black do=Dilate stack");	
-			imageCalculator("Subtract stack", "ch2","nucli");
-			imageCalculator("Subtract stack", "ch3","nucli");
+			imageCalculator("Subtract stack", "Vesicular","nucli");
+			imageCalculator("Subtract stack", "Vamp","nucli");
 			
-			selectWindow("ch3");
+			selectWindow("Vamp");
+			run("Duplicate...", "duplicate");
+			run("Convert to Mask", "method=Default background=Dark calculate black");
+			run("Analyze Particles...", "size=0-0.6 circularity=0.0-1.00 show=Masks clear stack");
+			run("Invert LUT");
+			run("Options...", "iterations=1 count=2 black do=Dilate stack");
+			imageCalculator("Subtract stack", "Vamp","Mask of Vamp-1");
+			close("Vamp-1");
+			close("Mask of Vamp-1");
+			selectWindow("Vesicular");
+			run("Duplicate...", "duplicate");
+			run("Convert to Mask", "method=Default background=Dark calculate black");
+			run("Analyze Particles...", "size=0.00-0.60 show=Masks clear stack");
+			run("Invert LUT");
+			run("Options...", "iterations=1 count=2 black do=Dilate stack");
+			imageCalculator("Subtract stack", "Vesicular","Mask of Vesicular-1");
+			close("Vesicular-1");
+			close("Mask of Vesicular-1");
+			
+			imageCalculator("Max create stack", "Vesicular","Vamp");
+			rename("max");
+			selectWindow("Vamp");
 			run("Duplicate...", "title=raw duplicate");
 			run("Gaussian Blur...", "sigma=15 stack");
 			run("Find Edges", "stack");
@@ -199,7 +293,7 @@ for (image=0;image<1;image++) {
 			run("Options...", "iterations=20 count=4 black do=Close stack");
 			run("Skeletonize", "stack");
 			run("Options...", "iterations=3 count=3 black do=Dilate stack");
-			imageCalculator("Add stack", "ch2","minline");
+			imageCalculator("Add stack", "Vesicular","minline");
 			close("minline");
 			selectWindow("rawline");
 			run("Duplicate...", "title=line2 duplicate");
@@ -216,7 +310,7 @@ for (image=0;image<1;image++) {
 			run("Options...", "iterations=10 count=3 black do=Dilate stack");
 			imageCalculator("Subtract stack", "rawline","nucli");		
 			
-			selectWindow("ch3");
+			selectWindow("Vamp");
 			run("Duplicate...", "title=1stpass duplicate");
 			run("Convert to Mask", "method=RenyiEntropy background=Dark calculate black");
 			run("Options...", "iterations=3 count=4 black do=Erode stack");
@@ -239,7 +333,7 @@ for (image=0;image<1;image++) {
 			run("Options...", "iterations=20 count=4 black do=Close stack");
 			run("Skeletonize", "stack");
 			run("Options...", "iterations=3 count=3 black do=Dilate stack");
-			imageCalculator("Add stack", "ch3","minline");
+			imageCalculator("Add stack", "Vamp","minline");
 			close("minline");
 			selectWindow("3line");
 			run("Duplicate...", "title=line3 duplicate");
@@ -260,7 +354,7 @@ for (image=0;image<1;image++) {
 			close("3line");
 			close("line3");
 			
-			imageCalculator("Min create stack", "ch2","ch3");
+			imageCalculator("Min create stack", "Vesicular","Vamp");
 			rename("min");
 			run("Morphological Filters (3D)", "operation=Closing element=Octagon x-radius=5 y-radius=5 z-radius=2");
 			rename("filter");
@@ -283,7 +377,7 @@ for (image=0;image<1;image++) {
 			run("Duplicate...", "title=filteredge duplicate");
 			run("Find Edges", "stack");
 			
-			imageCalculator("Average create stack", "ch2","ch3");
+			imageCalculator("Average create stack", "Vesicular","Vamp");
 			rename("ave");
 			run("Morphological Filters (3D)", "operation=Gradient element=Ball x-radius=3 y-radius=3 z-radius=2");
 			run("Mean...", "radius=10 stack");
@@ -426,7 +520,7 @@ for (image=0;image<1;image++) {
 			close("max");
 			close("laplacian");
 			
-			selectWindow("ch3");
+			selectWindow("Vamp");
 			run("Duplicate...", "title=entropy duplicate");
 			run("Convert to Mask", "method=MaxEntropy background=Dark black");
 			run("Despeckle", "stack");
@@ -542,9 +636,9 @@ for (image=0;image<1;image++) {
 				run("Set Scale...", "distance="+(1/xScaled)+" known=1 pixel="+(yScaled/xScaled)+" unit=um global");
 			}
 					
-			selectWindow("ch3");
+			selectWindow("Vamp");
 			run("Invert", "stack");
-			imageCalculator("AND create stack", "selected0","ch3");
+			imageCalculator("AND create stack", "selected0","Vamp");
 			rename("fake1");
 			imageCalculator("Subtract stack", "fake1", "nucli");
 			close("nucli");
@@ -563,7 +657,7 @@ for (image=0;image<1;image++) {
 			rename("fake");
 			close("fake2");
 					
-			imageCalculator("AND create stack", "selected0","ch3");
+			imageCalculator("AND create stack", "selected0","Vamp");
 			rename("nucli");
 			setThreshold(255, 255);
 			run("Convert to Mask", "method=Default background=Dark black");
@@ -887,8 +981,8 @@ for (image=0;image<1;image++) {
 			run("Fill Holes", "stack");
 			imageCalculator("Subtract stack", "celledges", "cells");
 			close("ch1");
-			close("ch2");
-			close("ch3");
+			close("Vesicular");
+			close("Vamp");
 		}
 		
 		//open the original file again
@@ -1026,13 +1120,13 @@ for (image=0;image<1;image++) {
 			makeRectangle(cropParam[4*(i-1)], cropParam[4*(i-1)+1], cropParam[4*(i-1)+2], cropParam[4*(i-1)+3]);
 			run("Crop");			
 			run("Select None");
-			selectWindow("ch2");
-			run("Duplicate...", "title=ch2-cell"+i+" duplicate");
+			selectWindow("Vesicular");
+			run("Duplicate...", "title=Vesicular-cell"+i+" duplicate");
 			makeRectangle(cropParam[4*(i-1)], cropParam[4*(i-1)+1], cropParam[4*(i-1)+2], cropParam[4*(i-1)+3]);
 			run("Crop");
 			run("Select None");
-			selectWindow("ch3");
-			run("Duplicate...", "title=ch3-cell"+i+" duplicate");
+			selectWindow("Vamp");
+			run("Duplicate...", "title=Vamp-cell"+i+" duplicate");
 			makeRectangle(cropParam[4*(i-1)], cropParam[4*(i-1)+1], cropParam[4*(i-1)+2], cropParam[4*(i-1)+3]);
 			run("Crop");			
 			run("Select None");			
@@ -1047,13 +1141,13 @@ for (image=0;image<1;image++) {
 		makeRectangle(cropParam[0], cropParam[1], cropParam[2], cropParam[3]);
 		run("Crop");
 		run("Select None");	
-		selectWindow("ch2");
-		rename("ch2-cell1");
+		selectWindow("Vesicular");
+		rename("Vesicular-cell1");
 		makeRectangle(cropParam[0], cropParam[1], cropParam[2], cropParam[3]);
 		run("Crop");
 		run("Select None");
-		selectWindow("ch3");
-		rename("ch3-cell1");
+		selectWindow("Vamp");
+		rename("Vamp-cell1");
 		makeRectangle(cropParam[0], cropParam[1], cropParam[2], cropParam[3]);
 		run("Crop");			
 		run("Select None");			
@@ -1069,8 +1163,8 @@ for (image=0;image<1;image++) {
 			roiManager("Show None");
 			n = roiManager("count");
 			
-			selectWindow("ch2-cell"+j);
-			run("Duplicate...", "title=ch2-celledge"+j+" duplicate");
+			selectWindow("Vesicular-cell"+j);
+			run("Duplicate...", "title=Vesicular-celledge"+j+" duplicate");
 			setBackgroundColor(0, 0, 0);
 			for (k = 1; k < s[0]; k++) {
 				setSlice(k);
@@ -1083,8 +1177,8 @@ for (image=0;image<1;image++) {
 		    	run("Clear Outside", "slice");
 		    	run("Select None");
 			}
-			selectWindow("ch3-cell"+j);
-			run("Duplicate...", "title=ch3-celledge"+j+" duplicate");
+			selectWindow("Vamp-cell"+j);
+			run("Duplicate...", "title=Vamp-celledge"+j+" duplicate");
 			setBackgroundColor(0, 0, 0);
 			for (k = 1; k < s[0]; k++) {
 				setSlice(k);
@@ -1106,7 +1200,7 @@ for (image=0;image<1;image++) {
 			roiManager("Show None");
 			n = roiManager("count");
 			
-			selectWindow("ch2-cell"+j);
+			selectWindow("Vesicular-cell"+j);
 			setBackgroundColor(0, 0, 0);
 			for (k = 1; k < s[0]; k++) {
 				setSlice(k);
@@ -1124,11 +1218,11 @@ for (image=0;image<1;image++) {
 			bmean = Table.getColumn("Mean","Results");
 			bstd = Table.getColumn("StdDev", "Results");
 			for (k = 0; k < n; k++) {
-			    Table.set("Ch2-Cell-"+j+" Mean", k, bmean[k], backgroundTable);
-				Table.set("Ch2-Cell-"+j+" StdDev", k, bstd[k], backgroundTable);
+			    Table.set("Vesicular-Cell-"+j+" Mean", k, bmean[k], backgroundTable);
+				Table.set("Vesicular-Cell-"+j+" StdDev", k, bstd[k], backgroundTable);
 			}
 				
-			selectWindow("ch2-celledge"+j);
+			selectWindow("Vesicular-celledge"+j);
 			setBackgroundColor(0, 0, 0);
 			for (k = 0; k < n; k++) {
 		    	roiManager("select", k);
@@ -1137,7 +1231,7 @@ for (image=0;image<1;image++) {
 		    	run("Subtract...", "value="+(bmean[k]+2*bstd[k])+" slice");
 			}
 						
-			selectWindow("ch3-cell"+j);
+			selectWindow("Vamp-cell"+j);
 			setBackgroundColor(0, 0, 0);
 			for (k = 1; k < s[0]; k++) {
 				setSlice(k);
@@ -1155,11 +1249,11 @@ for (image=0;image<1;image++) {
 			bmean = Table.getColumn("Mean","Results");
 			bstd = Table.getColumn("StdDev", "Results");
 			for (k = 0; k < n; k++) {
-			    Table.set("Ch2-Cell-"+j+" Mean", k, bmean[k], backgroundTable);
-				Table.set("Ch2-Cell-"+j+" StdDev", k, bstd[k], backgroundTable);
+			    Table.set("Vesicular-Cell-"+j+" Mean", k, bmean[k], backgroundTable);
+				Table.set("Vesicular-Cell-"+j+" StdDev", k, bstd[k], backgroundTable);
 			}
 
-			selectWindow("ch3-celledge"+j);
+			selectWindow("Vamp-celledge"+j);
 			setBackgroundColor(0, 0, 0);
 			for (k = 0; k < n; k++) {
 		    	roiManager("select", k);
@@ -1337,9 +1431,9 @@ Table.sort("Circ.");
 			selectWindow("ch3");
 			run("Duplicate...", "title=ch3-cell-"+j+" duplicate");
 			run("Duplicate...", "title=ch3-background-"+j+" duplicate");
-			selectWindow("ch2");
-			run("Duplicate...", "title=ch2-cell-"+j+" duplicate");
-			run("Duplicate...", "title=ch2-background-"+j+" duplicate");
+			selectWindow("Vesicular");
+			run("Duplicate...", "title=Vesicular-cell-"+j+" duplicate");
+			run("Duplicate...", "title=Vesicular-background-"+j+" duplicate");
 
 			selectWindow("cell-"+j);
 			lslice = nSlices+1;
@@ -1355,7 +1449,7 @@ Table.sort("Circ.");
 					run("Clear", "slice");
 					run("Select None");
 					
-					selectWindow("ch2-background-"+j);
+					selectWindow("Vesicular-background-"+j);
 					setSlice(k);
 					run("Select All");
 					run("Clear", "slice");
@@ -1367,7 +1461,7 @@ Table.sort("Circ.");
 					run("Clear", "slice");
 					run("Select None");
 					
-					selectWindow("ch2-cell-"+j);
+					selectWindow("Vesicular-cell-"+j);
 					setSlice(k);
 					run("Select All");
 					run("Clear", "slice");
@@ -1385,7 +1479,7 @@ Table.sort("Circ.");
 				run("Make Band...", "band=4");
 				run("Clear Outside", "slice");
 				run("Select None");
-				selectWindow("ch2-background-"+j);
+				selectWindow("Vesicular-background-"+j);
 			    roiManager("select", i);
 			    run("Clear Outside", "slice");
 				run("Select None");
